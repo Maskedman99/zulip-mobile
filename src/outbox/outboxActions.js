@@ -50,17 +50,40 @@ export const trySendMessages = (dispatch: Dispatch, getState: GetState): boolean
   const state = getState();
   const auth = getAuth(state);
   const outboxToSend = state.outbox.filter(outbox => !outbox.isSent);
+  const oneWeekAgoTimestamp = Date.now() / 1000 - 60 * 60 * 24 * 7;
   try {
     outboxToSend.forEach(async item => {
-      await api.sendMessage(
-        auth,
-        item.type,
-        isPrivateOrGroupNarrow(item.narrow) ? item.narrow[0].operand : item.display_recipient,
-        item.subject,
-        item.markdownContent,
-        item.timestamp,
-        state.session.eventQueueId,
-      );
+      // If a message has spent over a week in the outbox, it's probably too
+      // stale to try sending it.
+      //
+      // TODO: instead of just throwing these away, create an "unsendable" state
+      // (including a reason for unsendability), and transition old messages to
+      // that instead.
+      if (item.timestamp < oneWeekAgoTimestamp) {
+        dispatch(deleteOutboxMessage(item.id));
+        return; // i.e., continue
+      }
+
+      const to = ((): string => {
+        const { narrow } = item;
+        // TODO: can this test be `if (item.type === private)`?
+        if (isPrivateOrGroupNarrow(narrow)) {
+          return narrow[0].operand;
+        } else {
+          // HACK: the server attempts to interpret this argument as JSON, then
+          // CSV, then a literal. To avoid misparsing, always use JSON.
+          return JSON.stringify([item.display_recipient]);
+        }
+      })();
+
+      await api.sendMessage(auth, {
+        type: item.type,
+        to,
+        subject: item.subject,
+        content: item.markdownContent,
+        localId: item.timestamp,
+        eventQueueId: state.session.eventQueueId,
+      });
       dispatch(messageSendComplete(item.timestamp));
     });
     return true;

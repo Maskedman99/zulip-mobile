@@ -1,13 +1,13 @@
 /* @flow strict-local */
 import type { CaughtUp, CaughtUpState, Action } from '../types';
 import {
-  DEAD_QUEUE,
+  REALM_INIT,
   LOGOUT,
   LOGIN_SUCCESS,
   ACCOUNT_SWITCH,
   MESSAGE_FETCH_COMPLETE,
 } from '../actionConstants';
-import { LAST_MESSAGE_ANCHOR, FIRST_UNREAD_ANCHOR } from '../constants';
+import { LAST_MESSAGE_ANCHOR, FIRST_UNREAD_ANCHOR } from '../anchor';
 import { NULL_OBJECT } from '../nullObjects';
 import { DEFAULT_CAUGHTUP } from './caughtUpSelectors';
 
@@ -56,7 +56,7 @@ const legacyInferCaughtUp = (prevCaughtUp: CaughtUp | void, action) => {
 
 export default (state: CaughtUpState = initialState, action: Action): CaughtUpState => {
   switch (action.type) {
-    case DEAD_QUEUE:
+    case REALM_INIT:
     case LOGOUT:
     case LOGIN_SUCCESS:
     case ACCOUNT_SWITCH:

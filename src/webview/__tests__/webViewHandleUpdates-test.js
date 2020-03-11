@@ -99,6 +99,7 @@ describe('getUpdateEvents', () => {
         alertWords: {},
         auth: { realm: '' },
         flags: { starred: {}, has_alert_word: {} },
+        ownUser: { user_id: 1432 },
       },
       narrow: HOME_NARROW,
       messages: [],
@@ -109,6 +110,7 @@ describe('getUpdateEvents', () => {
         alertWords: {},
         auth: { realm: '' },
         flags: { starred: {}, has_alert_word: {} },
+        ownUser: { user_id: 1432 },
       },
       narrow: HOME_NARROW,
       messages: [],
@@ -154,6 +156,7 @@ describe('getUpdateEvents', () => {
         alertWords: {},
         auth: { realm: '' },
         flags: { starred: {}, has_alert_word: {} },
+        ownUser: { user_id: 1432 },
       },
       narrow: HOME_NARROW,
       fetching: { older: false, newer: false },
@@ -166,6 +169,7 @@ describe('getUpdateEvents', () => {
         alertWords: {},
         auth: { realm: '' },
         flags: { starred: {}, has_alert_word: {} },
+        ownUser: { user_id: 1432 },
       },
       narrow: HOME_NARROW,
       fetching: { older: false, newer: true },
@@ -223,7 +227,7 @@ describe('flagsStateToStringList', () => {
     },
     mentions: {},
     // ...
-    // the actual store keeps track of many more flags
+    // the actual state keeps track of many more flags
   };
 
   test("returns a string list of flags for some message, given some FlagsState and the message's id", () => {

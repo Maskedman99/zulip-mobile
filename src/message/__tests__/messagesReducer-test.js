@@ -1,7 +1,7 @@
 import deepFreeze from 'deep-freeze';
 
 import messagesReducer from '../messagesReducer';
-import { FIRST_UNREAD_ANCHOR } from '../../constants';
+import { FIRST_UNREAD_ANCHOR } from '../../anchor';
 import {
   MESSAGE_FETCH_COMPLETE,
   EVENT_NEW_MESSAGE,
@@ -95,6 +95,7 @@ describe('messagesReducer', () => {
       const newState = messagesReducer(initialState, action);
       expect(newState).toEqual(initialState);
     });
+
     test('if a message exists it is deleted', () => {
       const initialState = deepFreeze({ 1: { id: 1 }, 2: { id: 2 } });
 

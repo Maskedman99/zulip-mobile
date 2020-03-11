@@ -7,7 +7,7 @@ import { getMessageIdFromLink, getNarrowFromLink } from '../utils/internalLinks'
 import openLink from '../utils/openLink';
 import { fetchMessagesInNarrow } from './fetchActions';
 import { navigateToChat } from '../nav/navActions';
-import { FIRST_UNREAD_ANCHOR } from '../constants';
+import { FIRST_UNREAD_ANCHOR } from '../anchor';
 import { getStreamsById } from '../subscriptions/subscriptionSelectors';
 
 /**
@@ -27,7 +27,7 @@ export const doNarrow = (narrow: Narrow, anchor: number = FIRST_UNREAD_ANCHOR) =
 ) => {
   const state = getState();
 
-  if (!isNarrowValid(narrow)(state) || !getIsHydrated(state)) {
+  if (!isNarrowValid(state, narrow) || !getIsHydrated(state)) {
     return;
   }
 

@@ -48,11 +48,11 @@ const makeUniqueRandInt = (itemsType: string, end: number): (() => number) => {
 };
 
 /** Return a string that's almost surely different every time. */
-const randString = () => randInt(2 ** 54).toString(36);
+export const randString = () => randInt(2 ** 54).toString(36);
 
 const randUserId: () => number = makeUniqueRandInt('user IDs', 10000);
 const userOrBotProperties = ({ name: _name }) => {
-  const name = _name !== undefined ? _name : randString();
+  const name = _name ?? randString();
   const capsName = name.substring(0, 1).toUpperCase() + name.substring(1);
   return deepFreeze({
     avatar_url: `https://zulip.example.org/yo/avatar-${name}.png`,
@@ -90,16 +90,44 @@ export const makeCrossRealmBot = (args: { name?: string } = {}): CrossRealmBot =
     is_bot: true,
   });
 
-const makeAccount = (user: User): Account =>
-  deepFreeze({
-    realm: 'https://zulip.example.org',
-    email: user.email,
-    apiKey: randString() + randString(),
-    ackedPushToken: null,
+export const realm = 'https://zulip.example.org';
+
+export const zulipVersion = '2.1.0-234-g7c3acf4';
+
+export const makeAccount = (
+  args: {
+    user?: User,
+    email?: string,
+    realm?: string,
+    apiKey?: string,
+    shouldHaveZulipVersion?: boolean,
+    zulipVersion?: string,
+    ackedPushToken?: string | null,
+  } = {},
+): Account => {
+  const {
+    user = makeUser({ name: randString() }),
+    email = user.email,
+    realm: realmInner = realm,
+    apiKey = randString() + randString(),
+    shouldHaveZulipVersion = true,
+    zulipVersion: zulipVersionInner = zulipVersion,
+    ackedPushToken = null,
+  } = args;
+  return deepFreeze({
+    realm: realmInner,
+    email,
+    apiKey,
+    zulipVersion: shouldHaveZulipVersion ? zulipVersionInner : undefined,
+    ackedPushToken,
   });
+};
 
 export const selfUser: User = makeUser({ name: 'self' });
-export const selfAccount: Account = makeAccount(selfUser);
+export const selfAccount: Account = makeAccount({
+  user: selfUser,
+  realm,
+});
 export const selfAuth: Auth = deepFreeze(authOfAccount(selfAccount));
 
 export const otherUser: User = makeUser({ name: 'other' });
@@ -108,9 +136,8 @@ export const crossRealmBot: CrossRealmBot = makeCrossRealmBot({ name: 'bot' });
 
 const randStreamId: () => number = makeUniqueRandInt('stream IDs', 1000);
 export const makeStream = (args: { name?: string, description?: string } = {}): Stream => {
-  const name = args.name !== undefined ? args.name : randString();
-  const description =
-    args.description !== undefined ? args.description : `On the ${randString()} of ${name}`;
+  const name = args.name ?? randString();
+  const description = args.description ?? `On the ${randString()} of ${name}`;
   return deepFreeze({
     stream_id: randStreamId(),
     name,
@@ -352,6 +379,7 @@ export const action = deepFreeze({
       },
       user_status: {},
     },
+    zulipVersion,
   },
 });
 

@@ -33,14 +33,12 @@ import {
   getDebug,
   getRenderedMessages,
   getFlags,
-  getAnchorForNarrow,
   getFetchingForNarrow,
+  getFirstUnreadIdInNarrow,
   getMute,
-  getOwnEmail,
   getOwnUser,
   getSettings,
   getSubscriptions,
-  getShowMessagePlaceholders,
   getShownMessagesForNarrow,
   getRealm,
 } from '../selectors';
@@ -64,34 +62,42 @@ import * as logging from '../utils/logging';
  *
  * This data is all independent of the specific narrow or specific messages
  * we're displaying; data about those goes elsewhere.
+ *
+ * We pass this object down to a variety of lower layers and helper
+ * functions, where it saves us from individually wiring through all the
+ * overlapping subsets of this data they respectively need.
  */
-export type BackgroundData = $ReadOnly<{
+export type BackgroundData = $ReadOnly<{|
   alertWords: AlertWordsState,
+  allImageEmojiById: $ReadOnly<{ [id: string]: ImageEmojiType }>,
   auth: Auth,
   debug: Debug,
   flags: FlagsState,
   mute: MuteState,
-  ownEmail: string,
-  ownUserId: number,
-  allImageEmojiById: $ReadOnly<{ [id: string]: ImageEmojiType }>,
-  twentyFourHourTime: boolean,
+  ownUser: User,
   subscriptions: Subscription[],
-}>;
+  theme: ThemeName,
+  twentyFourHourTime: boolean,
+|}>;
 
 type SelectorProps = {|
+  // Data independent of the particular narrow or messages we're displaying.
   backgroundData: BackgroundData,
-  anchor: number,
+
+  // The remaining props contain data specific to the particular narrow or
+  // particular messages we're displaying.  Data that's independent of those
+  // should go in `BackgroundData`, above.
+  initialScrollMessageId: number | null,
   fetching: Fetching,
   messages: $ReadOnlyArray<Message | Outbox>,
   renderedMessages: RenderedSectionDescriptor[],
-  showMessagePlaceholders: boolean,
-  theme: ThemeName,
   typingUsers: $ReadOnlyArray<User>,
 |};
 
 // TODO get a type for `connectActionSheet` so this gets fully type-checked.
 export type Props = $ReadOnly<{|
   narrow: Narrow,
+  showMessagePlaceholders: boolean,
 
   dispatch: Dispatch,
   ...SelectorProps,
@@ -110,41 +116,56 @@ export type Props = $ReadOnly<{|
  */
 const assetsPath = Platform.OS === 'ios' ? './webview' : 'file:///android_asset/webview';
 // What the value above probably _should_ be, semantically, is an absolute
-// `file:`-scheme URL naming the path to the webview-assets folder. [1]
+// `file:`-scheme URL pointing to the webview-assets folder. [1]
 //
 // * On Android, that's exactly what it is. Different apps' WebViews see
-//   different (virtual) root directories as `file:///`, and at runtime, the
-//   APK's `assets/` directory is mounted at `file:///android_asset/`. We can
-//   easily hardcode that, so we do.
+//   different (virtual) root directories as `file:///`, and in particular
+//   the WebView provides the APK's `assets/` directory as
+//   `file:///android_asset/`. [2]  We can easily hardcode that, so we do.
 //
 // * On iOS, it's not: it's a relative path. (Or relative URL, if you prefer.)
 //   We can't make it absolute here, because neither React Native itself nor any
 //   of our current dependencies directly expose the Foundation API that would
-//   tell us the absolute path that our bundle is located at [2].
+//   tell us the absolute path that our bundle is located at [3].
 //
-//   Instead, for now, we exploit the fact that (the iOS version of) React
-//   Native will resolve it with respect to the bundle's absolute path. [3] This
-//   fact is not known to be documented, however, and should not be taken for
-//   granted indefinitely.
+//   Instead, for now, we exploit the fact that (the iOS version of)
+//   react-native-webview will have React Native resolve it with respect to
+//   the bundle's absolute path. [4]  This fact is not known to be
+//   documented, however, and should not be taken for granted indefinitely.
 //
 // [1] See `tools/build-webview` for more information on what folder that is.
 //
-// [2] Specifically, `Bundle.main.bundleURL` (aka `[[NSBundle mainbundle]
-//     bundleURL]`). Alternatively, the value of `resourceURL` is (believed to
-//     be) equivalent in this context.
+// [2] Oddly, this essential feature doesn't seem to be documented!  It's
+//     widely described in how-tos across the web and StackOverflow answers.
+//     It's assumed in some related docs which mention it in passing, and
+//     treated matter-of-factly in some Chromium bug threads.  Details at:
+//     https://chat.zulip.org/#narrow/stream/243-mobile-team/topic/android.20filesystem/near/796440
 //
-// [3] https://github.com/facebook/react-native/blob/0.59-stable/React/Base/RCTConvert.m#L85
+// [3] Specifically, `Bundle.main.bundleURL` (aka `[[NSBundle mainbundle]
+//     bundleURL]`).  Alternatively, `resourceURL` has a meaning similar to
+//     the `assets/` directory in an Android app; for iOS app bundles, it
+//     has the same value as `bundleURL`.
+//     https://github.com/zulip/zulip-mobile/pull/3677#discussion_r344423032
+//
+// [4] https://github.com/react-native-community/react-native-webview/blob/v5.12.1/ios/RNCWKWebView.m#L376
+//     https://github.com/facebook/react-native/blob/v0.59.10/React/Base/RCTConvert.m#L85
 
 class MessageList extends Component<Props> {
   static contextType = ThemeContext;
   context: ThemeColors;
 
   webview: ?WebView;
+  readyRetryInterval: IntervalID | void;
   sendUpdateEventsIsReady: boolean;
   unsentUpdateEvents: WebViewUpdateEvent[] = [];
 
   componentDidMount() {
     this.setupSendUpdateEvents();
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.readyRetryInterval);
+    this.readyRetryInterval = undefined;
   }
 
   handleError = (event: mixed) => {
@@ -155,11 +176,13 @@ class MessageList extends Component<Props> {
    * Initiate round-trip handshakes with the WebView, until one succeeds.
    */
   setupSendUpdateEvents = (): void => {
-    const intervalId = setInterval(() => {
+    clearInterval(this.readyRetryInterval);
+    this.readyRetryInterval = setInterval(() => {
       if (!this.sendUpdateEventsIsReady) {
         this.sendUpdateEvents([{ type: 'ready' }]);
       } else {
-        clearInterval(intervalId);
+        clearInterval(this.readyRetryInterval);
+        this.readyRetryInterval = undefined;
       }
     }, 30);
   };
@@ -208,15 +231,14 @@ class MessageList extends Component<Props> {
     const {
       backgroundData,
       renderedMessages,
-      anchor,
+      initialScrollMessageId,
       narrow,
-      theme,
       showMessagePlaceholders,
     } = this.props;
     const messagesHtml = renderMessagesAsHtml(backgroundData, narrow, renderedMessages);
-    const { auth } = backgroundData;
+    const { auth, theme } = backgroundData;
     const html = getHtml(messagesHtml, theme, {
-      anchor,
+      scrollMessageId: initialScrollMessageId,
       auth,
       showMessagePlaceholders,
     });
@@ -313,17 +335,17 @@ class MessageList extends Component<Props> {
 
 type OuterProps = {|
   narrow: Narrow,
+  showMessagePlaceholders: boolean,
 
   /* Remaining props are derived from `narrow` by default. */
 
   messages?: Message[],
   renderedMessages?: RenderedSectionDescriptor[],
-  anchor?: number,
+  initialScrollMessageId?: number | null,
 
   /* Passing these three from the parent is kind of a hack; search uses it
      to hard-code some behavior. */
   fetching?: Fetching,
-  showMessagePlaceholders?: boolean,
   typingUsers?: User[],
 |};
 
@@ -334,28 +356,26 @@ export default connect<SelectorProps, _, _>((state, props: OuterProps) => {
   // it'd be better to set an example of the right general pattern.
   const backgroundData: BackgroundData = {
     alertWords: state.alertWords,
+    allImageEmojiById: getAllImageEmojiById(state),
     auth: getAuth(state),
     debug: getDebug(state),
     flags: getFlags(state),
     mute: getMute(state),
-    ownEmail: getOwnEmail(state),
-    ownUserId: getOwnUser(state).user_id,
-    allImageEmojiById: getAllImageEmojiById(state),
+    ownUser: getOwnUser(state),
     subscriptions: getSubscriptions(state),
+    theme: getSettings(state).theme,
     twentyFourHourTime: getRealm(state).twentyFourHourTime,
   };
 
   return {
     backgroundData,
-    anchor: props.anchor !== undefined ? props.anchor : getAnchorForNarrow(props.narrow)(state),
-    fetching: props.fetching || getFetchingForNarrow(props.narrow)(state),
+    initialScrollMessageId:
+      props.initialScrollMessageId !== undefined
+        ? props.initialScrollMessageId
+        : getFirstUnreadIdInNarrow(state, props.narrow),
+    fetching: props.fetching || getFetchingForNarrow(state, props.narrow),
     messages: props.messages || getShownMessagesForNarrow(state, props.narrow),
-    renderedMessages: props.renderedMessages || getRenderedMessages(props.narrow)(state),
-    showMessagePlaceholders:
-      props.showMessagePlaceholders !== undefined
-        ? props.showMessagePlaceholders
-        : getShowMessagePlaceholders(props.narrow)(state),
-    theme: getSettings(state).theme,
+    renderedMessages: props.renderedMessages || getRenderedMessages(state, props.narrow),
     typingUsers: props.typingUsers || getCurrentTypingUsers(state, props.narrow),
   };
 })(connectActionSheet(withGetText(MessageList)));

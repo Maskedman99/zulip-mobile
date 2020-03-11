@@ -1,5 +1,14 @@
 /* @flow strict-local */
-import type { Narrow, Dispatch, GetState, GlobalState, Message, Action } from '../types';
+import type {
+  Narrow,
+  Dispatch,
+  GetState,
+  GlobalState,
+  Message,
+  Action,
+  ApiResponseServerSettings,
+} from '../types';
+import type { InitialData } from '../api/initialDataTypes';
 import * as api from '../api';
 import {
   getAuth,
@@ -17,13 +26,12 @@ import {
   MESSAGE_FETCH_START,
   MESSAGE_FETCH_COMPLETE,
 } from '../actionConstants';
-import { FIRST_UNREAD_ANCHOR, LAST_MESSAGE_ANCHOR } from '../constants';
+import { FIRST_UNREAD_ANCHOR, LAST_MESSAGE_ANCHOR } from '../anchor';
 import { ALL_PRIVATE_NARROW } from '../utils/narrow';
 import { tryUntilSuccessful } from '../utils/async';
 import { initNotifications } from '../notification/notificationActions';
 import { addToOutbox, sendOutbox } from '../outbox/outboxActions';
 import { realmInit } from '../realm/realmActions';
-import { reportPresence } from '../users/usersActions';
 import { startEventPolling } from '../events/eventActions';
 import { logout } from '../account/accountActions';
 
@@ -59,8 +67,8 @@ export const fetchMessages = (
   anchor: number,
   numBefore: number,
   numAfter: number,
-  useFirstUnread: boolean = false,
 ) => async (dispatch: Dispatch, getState: GetState) => {
+  const useFirstUnread = anchor === FIRST_UNREAD_ANCHOR;
   dispatch(messageFetchStart(narrow, numBefore, numAfter));
   const { messages, found_newest, found_oldest } = await api.getMessages(
     getAuth(getState()),
@@ -79,7 +87,7 @@ export const fetchOlder = (narrow: Narrow) => (dispatch: Dispatch, getState: Get
   const state = getState();
   const firstMessageId = getFirstMessageId(state, narrow);
   const caughtUp = getCaughtUpForNarrow(state, narrow);
-  const fetching = getFetchingForNarrow(narrow)(state);
+  const fetching = getFetchingForNarrow(state, narrow);
   const { needsInitialFetch } = getSession(state);
 
   if (!needsInitialFetch && !fetching.older && !caughtUp.older && firstMessageId !== undefined) {
@@ -91,7 +99,7 @@ export const fetchNewer = (narrow: Narrow) => (dispatch: Dispatch, getState: Get
   const state = getState();
   const lastMessageId = getLastMessageId(state, narrow);
   const caughtUp = getCaughtUpForNarrow(state, narrow);
-  const fetching = getFetchingForNarrow(narrow)(state);
+  const fetching = getFetchingForNarrow(state, narrow);
   const { needsInitialFetch } = getSession(state);
 
   if (!needsInitialFetch && !fetching.newer && !caughtUp.newer && lastMessageId !== undefined) {
@@ -143,13 +151,7 @@ export const fetchMessagesInNarrow = (
     return;
   }
   dispatch(
-    fetchMessages(
-      narrow,
-      anchor,
-      config.messagesPerRequest / 2,
-      config.messagesPerRequest / 2,
-      anchor === FIRST_UNREAD_ANCHOR,
-    ),
+    fetchMessages(narrow, anchor, config.messagesPerRequest / 2, config.messagesPerRequest / 2),
   );
 };
 
@@ -219,25 +221,27 @@ const fetchTopMostNarrow = () => async (dispatch: Dispatch, getState: GetState) 
  * we want to do when starting up, or regaining a network connection.
  */
 export const doInitialFetch = () => async (dispatch: Dispatch, getState: GetState) => {
-  dispatch(reportPresence());
-  setInterval(() => dispatch(reportPresence()), 60 * 1000);
-
   dispatch(initialFetchStart());
   const auth = getAuth(getState());
 
-  let initData;
+  let initData: InitialData;
+  let serverSettings: ApiResponseServerSettings;
+
   try {
-    initData = await tryUntilSuccessful(() =>
-      api.registerForEvents(auth, {
-        fetch_event_types: config.serverDataOnStartup,
-        apply_markdown: true,
-        include_subscribers: false,
-        client_gravatar: true,
-        client_capabilities: {
-          notification_settings_null: true,
-        },
-      }),
-    );
+    [initData, serverSettings] = await Promise.all([
+      tryUntilSuccessful(() =>
+        api.registerForEvents(auth, {
+          fetch_event_types: config.serverDataOnStartup,
+          apply_markdown: true,
+          include_subscribers: false,
+          client_gravatar: true,
+          client_capabilities: {
+            notification_settings_null: true,
+          },
+        }),
+      ),
+      tryUntilSuccessful(() => api.getServerSettings(auth.realm)),
+    ]);
   } catch (e) {
     // This should only happen on a 4xx HTTP status, which should only
     // happen when `auth` is no longer valid.  No use retrying; just log out.
@@ -245,7 +249,7 @@ export const doInitialFetch = () => async (dispatch: Dispatch, getState: GetStat
     return;
   }
 
-  dispatch(realmInit(initData));
+  dispatch(realmInit(initData, serverSettings.zulip_version));
   dispatch(fetchTopMostNarrow());
   dispatch(initialFetchComplete());
   dispatch(startEventPolling(initData.queue_id, initData.last_event_id));

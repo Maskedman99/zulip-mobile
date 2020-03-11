@@ -100,8 +100,8 @@ export type { NavigationAction } from 'react-navigation';
  *
  * @prop payload A version of the global Redux state, as persisted by the
  *     app's previous runs.  This will be empty on first startup or if the
- *     persisted store is just missing keys, and will have `null` at each
- *     key where an error was encountered in reading the persisted store.
+ *     persisted state is just missing keys, and will have `null` at each
+ *     key where an error was encountered in reading the persisted state.
  *     In any case it will only contain the keys we configure to be persisted.
  * @prop error
  */
@@ -160,6 +160,7 @@ type AccountSwitchAction = {|
 type RealmAddAction = {|
   type: typeof REALM_ADD,
   realm: string,
+  zulipVersion: string,
 |};
 
 type AccountRemoveAction = {|
@@ -181,12 +182,13 @@ type LogoutAction = {|
 type RealmInitAction = {|
   type: typeof REALM_INIT,
   data: InitialData,
+  zulipVersion: string,
 |};
 
 /** We learned the device token from the system.  See `SessionState`. */
 type GotPushTokenAction = {|
   type: typeof GOT_PUSH_TOKEN,
-  pushToken: string,
+  pushToken: null | string,
 |};
 
 /** We're about to tell the server to forget our device token. */

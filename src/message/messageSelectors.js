@@ -12,7 +12,7 @@ import {
 import * as logging from '../utils/logging';
 import { getShownMessagesForNarrow } from '../chat/narrowsSelectors';
 import renderMessages from './renderMessages';
-import { findAnchor } from '../utils/message';
+import { findFirstUnread } from '../utils/message';
 import type { JSONable } from '../utils/jsonable';
 import { ALL_PRIVATE_NARROW_STR } from '../utils/narrow';
 import { NULL_ARRAY } from '../nullObjects';
@@ -62,17 +62,17 @@ export const getPrivateMessages: Selector<Message[]> = createSelector(
   },
 );
 
-export const getRenderedMessages = (narrow: Narrow): Selector<RenderedSectionDescriptor[]> =>
-  createSelector(
-    state => getShownMessagesForNarrow(state, narrow),
-    messages => renderMessages(messages, narrow),
-  );
+export const getRenderedMessages: Selector<RenderedSectionDescriptor[], Narrow> = createSelector(
+  (state, narrow) => narrow,
+  getShownMessagesForNarrow,
+  (narrow, messages) => renderMessages(messages, narrow),
+);
 
-export const getAnchorForNarrow = (narrow: Narrow): Selector<number> =>
-  createSelector(
-    state => getShownMessagesForNarrow(state, narrow),
-    getFlags,
-    getSubscriptions,
-    getMute,
-    (messages, flags, subscriptions, mute) => findAnchor(messages, flags, subscriptions, mute),
-  );
+export const getFirstUnreadIdInNarrow: Selector<number | null, Narrow> = createSelector(
+  (state, narrow) => getShownMessagesForNarrow(state, narrow),
+  getFlags,
+  getSubscriptions,
+  getMute,
+  (messages, flags, subscriptions, mute) =>
+    findFirstUnread(messages, flags, subscriptions, mute)?.id ?? null,
+);

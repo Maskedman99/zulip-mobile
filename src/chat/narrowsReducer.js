@@ -4,7 +4,7 @@ import union from 'lodash.union';
 import type { NarrowsState, Action } from '../types';
 import { ensureUnreachable } from '../types';
 import {
-  DEAD_QUEUE,
+  REALM_INIT,
   LOGOUT,
   LOGIN_SUCCESS,
   ACCOUNT_SWITCH,
@@ -13,7 +13,7 @@ import {
   EVENT_MESSAGE_DELETE,
   EVENT_UPDATE_MESSAGE_FLAGS,
 } from '../actionConstants';
-import { LAST_MESSAGE_ANCHOR, FIRST_UNREAD_ANCHOR } from '../constants';
+import { LAST_MESSAGE_ANCHOR, FIRST_UNREAD_ANCHOR } from '../anchor';
 import { isMessageInNarrow, MENTIONED_NARROW_STR, STARRED_NARROW_STR } from '../utils/narrow';
 import { NULL_OBJECT } from '../nullObjects';
 
@@ -95,7 +95,7 @@ const eventUpdateMessageFlags = (state, action) => {
 
 export default (state: NarrowsState = initialState, action: Action): NarrowsState => {
   switch (action.type) {
-    case DEAD_QUEUE:
+    case REALM_INIT:
     case LOGOUT:
     case LOGIN_SUCCESS:
     case ACCOUNT_SWITCH:

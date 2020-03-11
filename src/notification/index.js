@@ -2,8 +2,10 @@
 import { DeviceEventEmitter, NativeModules, Platform, PushNotificationIOS } from 'react-native';
 import NotificationsIOS from 'react-native-notifications';
 
+import type { Notification } from './types';
 import type { Auth, Dispatch, Identity, Narrow, User } from '../types';
 import { topicNarrow, privateNarrow, groupNarrow } from '../utils/narrow';
+import type { JSONable, JSONableDict } from '../utils/jsonable';
 import * as api from '../api';
 import * as logging from '../utils/logging';
 import {
@@ -13,32 +15,7 @@ import {
   narrowToNotification,
 } from './notificationActions';
 import { identityOfAuth } from '../account/accountMisc';
-
-/**
- * The data we need in JS/React code for acting on a notification.
- *
- * The actual objects we describe with these types may have a bunch more
- * fields.  So, properly, these object types aren't really exact.  But
- * pretending they are seems to be the least unpleasant way to get Flow to
- * recognize the effect of refinements like `data.pm_users === undefined`.
- *
- * Currently:
- *
- *  * On iOS, these objects are translated directly, field by field, from
- *    the blobs of key/value pairs sent by the Zulip server in the
- *    "payload".  The set of fields therefore varies by server version.
- *
- *  * On Android, our platform-native code constructs the exact data to
- *    send; see `MessageFcmMessage#dataForOpen` in `FcmMessage.kt`.
- *    That should be kept in sync with this type definition, in which case
- *    these types really are exact.
- */
-export type Notification =
-  | {| recipient_type: 'stream', stream: string, topic: string, realm_uri?: string |}
-  // Group PM messages have `pm_users`, which is comma-separated IDs.
-  | {| recipient_type: 'private', pm_users: string, realm_uri?: string |}
-  // 1:1 PM messages lack `pm_users`.
-  | {| recipient_type: 'private', sender_email: string, realm_uri?: string |};
+import { fromAPNs } from './extract';
 
 /**
  * Identify the account the notification is for, if possible.
@@ -129,30 +106,25 @@ export const getNarrowFromNotificationData = (
   return groupNarrow(emails);
 };
 
-type NotificationMuddle =
-  | Notification
-  | null
-  | void
-  | { getData: () => Notification | { zulip: Notification } };
-
-/** Extract the actual notification data from the wix library's wrapping (iOS only). */
-// exported for tests
-export const extractNotificationData = (notification: NotificationMuddle): Notification | null => {
-  if (!notification || !notification.getData) {
-    return null;
-  }
-  const data = notification.getData();
-  return data && data.zulip ? data.zulip : data;
-};
-
 const getInitialNotification = async (): Promise<Notification | null> => {
   if (Platform.OS === 'android') {
     const { Notifications } = NativeModules;
     return Notifications.getInitialNotification();
   }
-  const notification = await PushNotificationIOS.getInitialNotification();
-  // $FlowFixMe Upstream's libdef for getInitialNotification has `Object` types.
-  return extractNotificationData(notification);
+
+  const notification: ?PushNotificationIOS = await PushNotificationIOS.getInitialNotification();
+  if (!notification) {
+    return null;
+  }
+
+  // This is actually typed as ?Object (and so effectively `any`); but if
+  // present, it must be a JSONable dictionary. (See PushNotificationIOS.js and
+  // RCTPushNotificationManager.m in Libraries/PushNotificationIOS.)
+  const data: ?JSONableDict = notification.getData();
+  if (!data) {
+    return null;
+  }
+  return fromAPNs(data) || null;
 };
 
 export const handleInitialNotification = async (dispatch: Dispatch) => {
@@ -188,9 +160,10 @@ export class NotificationListener {
     if (Platform.OS === 'ios') {
       NotificationsIOS.addEventListener(name, handler);
       this.unsubs.push(() => NotificationsIOS.removeEventListener(name, handler));
+    } else {
+      const subscription = DeviceEventEmitter.addListener(name, handler);
+      this.unsubs.push(() => subscription.remove());
     }
-    const subscription = DeviceEventEmitter.addListener(name, handler);
-    this.unsubs.push(() => subscription.remove());
   }
 
   /** Private. */
@@ -201,15 +174,32 @@ export class NotificationListener {
   }
 
   /** Private. */
-  handleNotificationOpen = (notification: NotificationMuddle) => {
-    const data: Notification =
-      // $FlowFixMe clarify notification types
-      Platform.OS === 'ios' ? extractNotificationData(notification) : notification;
-    this.dispatch(narrowToNotification(data));
+  handleNotificationOpen = (notification: Notification) => {
+    this.dispatch(narrowToNotification(notification));
   };
 
-  /** Private. */
-  handleDeviceToken = async (deviceToken: string) => {
+  /**
+   * Private.
+   *
+   * @param deviceToken This should be a `?string`, but there's no typechecking
+   *   at the registration site to allow us to ensure it. As we've been burned
+   *   by unexpected types here before, we do the validation explicitly.
+   */
+  handleDeviceToken = async (deviceToken: mixed) => {
+    // Null device tokens are known to occur (at least) on Android emulators
+    // without Google Play services, and have been reported in other scenarios.
+    // See https://stackoverflow.com/q/37517860 for relevant discussion.
+    //
+    // Otherwise, a device token should be some (platform-dependent and largely
+    // unspecified) flavor of string.
+    if (deviceToken !== null && typeof deviceToken !== 'string') {
+      // $FlowFixMe: deviceToken probably _is_ JSONable, but we can only hope
+      const token: JSONable = deviceToken;
+      logging.error('Received invalid device token', { token });
+      // Take no further action.
+      return;
+    }
+
     this.dispatch(gotPushToken(deviceToken));
     await this.dispatch(sendAllPushToken());
   };
@@ -223,8 +213,24 @@ export class NotificationListener {
 
   /** Start listening.  Don't call twice without intervening `stop`. */
   start() {
-    this.listen('notificationOpened', this.handleNotificationOpen);
+    if (Platform.OS === 'android') {
+      // On Android, the object passed to the handler is constructed in
+      // FcmMessage.kt, and will always be a Notification.
+      this.listen('notificationOpened', this.handleNotificationOpen);
+    } else {
+      // On iOS, `note` should be an IOSNotifications object. The notification
+      // data it returns from `getData` is unvalidated -- it comes almost
+      // straight off the wire from the server.
+      this.listen('notificationOpened', (note: { getData(): JSONableDict }) => {
+        const data = fromAPNs(note.getData());
+        if (data) {
+          this.handleNotificationOpen(data);
+        }
+      });
+    }
+
     this.listen('remoteNotificationsRegistered', this.handleDeviceToken);
+
     if (Platform.OS === 'ios') {
       this.listen('remoteNotificationsRegistrationFailed', this.handleRegistrationFailure);
     }

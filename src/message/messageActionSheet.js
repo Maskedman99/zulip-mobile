@@ -1,12 +1,20 @@
 /* @flow strict-local */
 import { Clipboard, Share, Alert } from 'react-native';
-import type { Auth, Dispatch, GetText, Message, Narrow, Outbox, Subscription } from '../types';
+import type {
+  Auth,
+  Dispatch,
+  GetText,
+  Message,
+  Narrow,
+  Outbox,
+  Subscription,
+  User,
+} from '../types';
 import type { BackgroundData } from '../webview/MessageList';
 import {
   getNarrowFromMessage,
-  isHomeNarrow,
-  isPrivateNarrow,
-  isSpecialNarrow,
+  isPrivateOrGroupNarrow,
+  isStreamOrTopicNarrow,
   isTopicNarrow,
 } from '../utils/narrow';
 import { isTopicMuted } from '../utils/message';
@@ -14,6 +22,8 @@ import * as api from '../api';
 import { showToast } from '../utils/info';
 import { doNarrow, startEditMessage, deleteOutboxMessage, navigateToEmojiPicker } from '../actions';
 import { navigateToMessageReactionScreen } from '../nav/navActions';
+import { pmUiRecipientsFromMessage } from '../utils/recipient';
+import { deleteMessagesForTopic } from '../topics/topicActions';
 
 // TODO really this belongs in a libdef.
 export type ShowActionSheetWithOptions = (
@@ -90,6 +100,45 @@ const muteTopic = async ({ auth, message }) => {
 muteTopic.title = 'Mute topic';
 muteTopic.errorMessage = 'Failed to mute topic';
 
+const deleteTopic = async ({ auth, message, dispatch, ownEmail, _ }) => {
+  const alertTitle = _.intl.formatMessage(
+    {
+      id: "Are you sure you want to delete the topic '{topic}'?",
+      defaultMessage: "Are you sure you want to delete the topic '{topic}'?",
+    },
+    { topic: message.subject },
+  );
+  const AsyncAlert = async (): Promise<boolean> =>
+    new Promise((resolve, reject) => {
+      Alert.alert(
+        alertTitle,
+        _('This will also delete all messages in the topic.'),
+        [
+          {
+            text: _('Delete topic'),
+            onPress: () => {
+              resolve(true);
+            },
+            style: 'destructive',
+          },
+          {
+            text: _('Cancel'),
+            onPress: () => {
+              resolve(false);
+            },
+            style: 'cancel',
+          },
+        ],
+        { cancelable: true },
+      );
+    });
+  if (await AsyncAlert()) {
+    await dispatch(deleteMessagesForTopic(message.display_recipient, message.subject));
+  }
+};
+deleteTopic.title = 'Delete topic';
+deleteTopic.errorMessage = 'Failed to delete topic';
+
 const unmuteStream = async ({ auth, message, subscriptions }) => {
   const sub = subscriptions.find(x => x.name === message.display_recipient);
   if (sub) {
@@ -159,6 +208,7 @@ const allButtonsRaw = {
   // For headers
   unmuteTopic,
   muteTopic,
+  deleteTopic,
   muteStream,
   unmuteStream,
 
@@ -181,11 +231,14 @@ type ConstructSheetParams = {|
 |};
 
 export const constructHeaderActionButtons = ({
-  backgroundData: { mute, subscriptions },
+  backgroundData: { mute, subscriptions, ownUser },
   message,
 }: ConstructSheetParams): ButtonCode[] => {
   const buttons: ButtonCode[] = [];
   if (message.type === 'stream') {
+    if (ownUser.is_admin) {
+      buttons.push('deleteTopic');
+    }
     if (isTopicMuted(message.display_recipient, message.subject, mute)) {
       buttons.push('unmuteTopic');
     } else {
@@ -206,18 +259,18 @@ const messageNotDeleted = (message: Message | Outbox): boolean =>
   message.content !== '<p>(deleted)</p>';
 
 export const constructMessageActionButtons = ({
-  backgroundData: { ownEmail, flags },
+  backgroundData: { ownUser, flags },
   message,
   narrow,
 }: ConstructSheetParams): ButtonCode[] => {
   const buttons = [];
-  if (message.reactions.length > 0) {
-    buttons.push('showReactions');
-  }
   if (!isAnOutboxMessage(message) && messageNotDeleted(message)) {
     buttons.push('addReaction');
   }
-  if (!isAnOutboxMessage(message) && !isTopicNarrow(narrow) && !isPrivateNarrow(narrow)) {
+  if (message.reactions.length > 0) {
+    buttons.push('showReactions');
+  }
+  if (!isAnOutboxMessage(message) && !isTopicNarrow(narrow) && !isPrivateOrGroupNarrow(narrow)) {
     buttons.push('reply');
   }
   if (messageNotDeleted(message)) {
@@ -226,13 +279,13 @@ export const constructMessageActionButtons = ({
   }
   if (
     !isAnOutboxMessage(message)
-    && message.sender_email === ownEmail
-    && !isHomeNarrow(narrow)
-    && !isSpecialNarrow(narrow)
+    && message.sender_email === ownUser.email
+    // Our "edit message" UI only works in certain kinds of narrows.
+    && (isStreamOrTopicNarrow(narrow) || isPrivateOrGroupNarrow(narrow))
   ) {
     buttons.push('editMessage');
   }
-  if (message.sender_email === ownEmail && messageNotDeleted(message)) {
+  if (message.sender_email === ownUser.email && messageNotDeleted(message)) {
     buttons.push('deleteMessage');
   }
   if (!isAnOutboxMessage(message)) {
@@ -244,6 +297,19 @@ export const constructMessageActionButtons = ({
   }
   buttons.push('cancel');
   return buttons;
+};
+
+/** Returns the title for the action sheet. */
+const getActionSheetTitle = (message: Message | Outbox, ownUser: User): string => {
+  if (message.type === 'private') {
+    const recipients = pmUiRecipientsFromMessage(message, ownUser);
+    return recipients
+      .map(r => r.full_name)
+      .sort()
+      .join(', ');
+  } else {
+    return `#${message.display_recipient} > ${message.subject}`;
+  }
 };
 
 /** Invoke the given callback to show an appropriate action sheet. */
@@ -265,7 +331,7 @@ export const showActionSheet = (
           dispatch,
           subscriptions: params.backgroundData.subscriptions,
           auth: params.backgroundData.auth,
-          ownEmail: params.backgroundData.ownEmail,
+          ownEmail: params.backgroundData.ownUser.email,
           _,
           ...params,
         });
@@ -278,7 +344,7 @@ export const showActionSheet = (
     {
       ...(isHeader
         ? {
-            title: `#${params.message.display_recipient} > ${params.message.subject}`,
+            title: getActionSheetTitle(params.message, params.backgroundData.ownUser),
           }
         : {}),
       options: optionCodes.map(code => _(allButtons[code].title)),

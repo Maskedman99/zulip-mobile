@@ -10,7 +10,7 @@ import { getAllImageEmojiByName } from './emojiSelectors';
 
 /* $FlowFixMe: `nameToEmojiMap` is mistyped upstream; elements of
   `glyphMap` may be either `number` or `string`. */
-const UnicodeEmoji = createIconSet(nameToEmojiMap, 'AppleColorEmoji');
+const UnicodeEmoji = createIconSet(nameToEmojiMap);
 
 type SelectorProps = {|
   imageEmoji: ImageEmojiType | void,
@@ -23,8 +23,6 @@ type Props = $ReadOnly<{|
   ...SelectorProps,
 |}>;
 
-// TODO: this only handles Unicode emoji (shipped with the app)
-// and realm emoji, but not Zulip extra emoji.  See our issue #2846.
 class Emoji extends PureComponent<Props> {
   styles = StyleSheet.create({
     image: { width: 20, height: 20 },

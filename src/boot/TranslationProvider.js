@@ -5,12 +5,12 @@ import { Text } from 'react-native';
 import { IntlProvider, IntlContext } from 'react-intl';
 import type { IntlShape } from 'react-intl';
 
-import type { GetText, Dispatch } from '../types';
-import { connect } from '../react-redux';
+import type { GetText } from '../types';
+import { useSelector } from '../react-redux';
 import { getSettings } from '../selectors';
 import messages from '../i18n/messages';
 
-// $FlowFixMe could put a well-typed mock value here, to help write tests
+// $FlowFixMe[incompatible-type] could put a well-typed mock value here, to help write tests
 export const TranslationContext: Context<GetText> = React.createContext(undefined);
 
 /**
@@ -36,7 +36,18 @@ export function withGetText<P: { +_: GetText, ... }, C: ComponentType<P>>(
 
 const makeGetText = (intl: IntlShape): GetText => {
   const _ = (message, values) =>
-    intl.formatMessage({ id: message, defaultMessage: message }, values);
+    intl.formatMessage(
+      {
+        id: message,
+
+        // If you see this in dev, it means there's a user-facing
+        // string that hasn't been added to
+        // static/translations/messages_en.json. Please add it! :)
+        defaultMessage:
+          process.env.NODE_ENV === 'development' ? `UNTRANSLATED—${message}—UNTRANSLATED` : message,
+      },
+      values,
+    );
   _.intl = intl;
   return _;
 };
@@ -62,23 +73,16 @@ class TranslationContextTranslator extends PureComponent<{|
 }
 
 type Props = $ReadOnly<{|
-  dispatch: Dispatch,
-  locale: string,
   children: React$Node,
 |}>;
 
-class TranslationProvider extends PureComponent<Props> {
-  render() {
-    const { locale, children } = this.props;
+export default function TranslationProvider(props: Props): React$Node {
+  const { children } = props;
+  const language = useSelector(state => getSettings(state).language);
 
-    return (
-      <IntlProvider locale={locale} textComponent={Text} messages={messages[locale]}>
-        <TranslationContextTranslator>{children}</TranslationContextTranslator>
-      </IntlProvider>
-    );
-  }
+  return (
+    <IntlProvider locale={language} textComponent={Text} messages={messages[language]}>
+      <TranslationContextTranslator>{children}</TranslationContextTranslator>
+    </IntlProvider>
+  );
 }
-
-export default connect(state => ({
-  locale: getSettings(state).locale,
-}))(TranslationProvider);

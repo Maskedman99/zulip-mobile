@@ -21,12 +21,6 @@ node_modules/warning/.*
 .*/node_modules/match-at/lib/.*
 .*/node_modules/eslint-plugin-jsx-a11y/.*
 
-# TODO: Use a different library, wait for
-# react-native-community/react-native-image-picker#1207 to be
-# resolved, or write our own libdef.
-.*/node_modules/react-native-image-picker/.*
-
-.*/node_modules/react-native-notifications/.*
 .*/node_modules/react-native-tab-view/.*
 .*/node_modules/react-native-safe-area/.*
 .*/node_modules/flow-coverage-report/.*
@@ -60,7 +54,6 @@ node_modules/react-native/flow/
 ; where the opposite behavior is exhibited!)
 flow-typed/@sentry/react-native_v1.x.x.js
 flow-typed/@react-native-community/async-storage_v1.x.x.js
-flow-typed/react-native-webview_v7.x.x.js
 flow-typed/react-native-url-polyfill_vx.x.x.js
 flow-typed/expo-screen-orientation_vx.x.x.js
 
@@ -97,6 +90,7 @@ deprecated-utility=error
 ; ours
 sketchy-number=error
 unnecessary-optional-chain=warn
+implicit-inexact-object=error
 
 
 [options]

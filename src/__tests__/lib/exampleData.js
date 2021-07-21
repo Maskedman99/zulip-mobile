@@ -17,8 +17,14 @@ import type {
   UserId,
 } from '../../api/modelTypes';
 import { makeUserId } from '../../api/idTypes';
-import type { Action, GlobalState, MessagesState, RealmState } from '../../reduxTypes';
-import type { Auth, Account, Outbox } from '../../types';
+import type {
+  Action,
+  GlobalState,
+  CaughtUpState,
+  MessagesState,
+  RealmState,
+} from '../../reduxTypes';
+import type { Auth, Account, OutboxBase, StreamOutbox } from '../../types';
 import { UploadedAvatarURL } from '../../utils/avatar';
 import { ZulipVersion } from '../../utils/zulipVersion';
 import {
@@ -32,6 +38,8 @@ import {
 import rootReducer from '../../boot/reducers';
 import { authOfAccount } from '../../account/accountMisc';
 import { HOME_NARROW } from '../../utils/narrow';
+import type { BackgroundData } from '../../webview/MessageList';
+import { getStreamsById, getStreamsByName } from '../../selectors';
 
 /* ========================================================================
  * Utilities
@@ -83,13 +91,13 @@ const makeUniqueRandInt = (itemsType: string, end: number): (() => number) => {
 };
 
 /** Return a string that's almost surely different every time. */
-export const randString = () => randInt(2 ** 54).toString(36);
+export const randString = (): string => randInt(2 ** 54).toString(36);
 
 const intRange = (start, len) => Array.from({ length: len }, (k, i) => i + start);
 
 /** A string with diverse characters to exercise encoding/decoding bugs. */
 /* eslint-disable prefer-template */
-export const diverseCharacters =
+export const diverseCharacters: string =
   // The whole range of lowest code points, including control codes
   // and ASCII punctuation like `"` and `&` used in various syntax...
   String.fromCharCode(...intRange(0, 0x100))
@@ -158,9 +166,9 @@ export const makeCrossRealmBot = (
     is_bot: true,
   });
 
-export const realm = new URL('https://zulip.example.org');
+export const realm: URL = new URL('https://zulip.example.org');
 
-export const zulipVersion = new ZulipVersion('2.1.0-234-g7c3acf4');
+export const zulipVersion: ZulipVersion = new ZulipVersion('2.1.0-234-g7c3acf4');
 
 export const zulipFeatureLevel = 1;
 
@@ -244,12 +252,14 @@ export const stream: Stream = makeStream({
 });
 
 /** A subscription, by default to eg.stream. */
-export const makeSubscription = (args: {| stream?: Stream |} = Object.freeze({})): Subscription => {
-  const { stream: streamInner = stream } = args;
+export const makeSubscription = (
+  args: {| stream?: Stream, in_home_view?: boolean |} = Object.freeze({}),
+): Subscription => {
+  const { stream: streamInner = stream, in_home_view } = args;
   return deepFreeze({
     ...streamInner,
     color: '#123456',
-    in_home_view: true,
+    in_home_view: in_home_view ?? true,
     pin_to_top: false,
     audible_notifications: false,
     desktop_notifications: false,
@@ -323,6 +333,11 @@ const randMessageId: () => number = makeUniqueRandInt('message ID', 10000000);
  * A PM, by default a 1:1 from eg.otherUser to eg.selfUser.
  *
  * Beware! These values may not be representative.
+ *
+ * NB that the resulting value has no `flags` property.  This matches what
+ * we expect in `state.messages`, but not some other contexts; see comment
+ * on the `flags` property of `Message`.  For use in an `EVENT_NEW_MESSAGE`
+ * action, pass to `mkActionEventNewMessage`.
  */
 export const pmMessage = (args?: {|
   ...$Rest<PmMessage, { ... }>,
@@ -378,6 +393,11 @@ const messagePropertiesFromStream = (stream1: Stream) => {
  * A stream message, by default in eg.stream sent by eg.otherUser.
  *
  * Beware! These values may not be representative.
+ *
+ * NB that the resulting value has no `flags` property.  This matches what
+ * we expect in `state.messages`, but not some other contexts; see comment
+ * on the `flags` property of `Message`.  For use in an `EVENT_NEW_MESSAGE`
+ * action, pass to `mkActionEventNewMessage`.
  */
 export const streamMessage = (args?: {|
   ...$Rest<StreamMessage, { ... }>,
@@ -415,8 +435,11 @@ export const makeMessagesState = (messages: Message[]): MessagesState =>
  * (Only stream messages for now. Feel free to add PMs, if you need them.)
  */
 
-/** An outbox message with no interesting data. */
-const outboxMessageBase: $Diff<Outbox, {| id: mixed, timestamp: mixed |}> = deepFreeze({
+/**
+ * Properties in common among PM and stream outbox messages, with no
+ *   interesting data.
+ */
+const outboxMessageBase: $Diff<OutboxBase, {| id: mixed, timestamp: mixed |}> = deepFreeze({
   isOutbox: true,
   isSent: false,
   avatar_url: selfUser.avatar_url,
@@ -434,11 +457,12 @@ const outboxMessageBase: $Diff<Outbox, {| id: mixed, timestamp: mixed |}> = deep
 });
 
 /**
- * Create an outbox message from an interesting subset of its data.
+ * Create a stream outbox message from an interesting subset of its
+ *   data.
  *
  * `.id` is always identical to `.timestamp` and should not be supplied.
  */
-export const makeOutboxMessage = (data: $Shape<$Diff<Outbox, {| id: mixed |}>>): Outbox => {
+export const streamOutbox = (data: $Shape<$Diff<StreamOutbox, {| id: mixed |}>>): StreamOutbox => {
   const { timestamp } = data;
 
   const outputTimestamp = timestamp ?? makeTime() / 1000;
@@ -557,6 +581,7 @@ export const action = deepFreeze({
       alert_words: [],
       max_message_id: 100,
       muted_topics: [],
+      muted_users: [],
       presences: {},
       max_icon_file_size: 3,
       realm_add_emoji_by_admins_only: true,
@@ -671,6 +696,8 @@ export const action = deepFreeze({
     foundOldest: undefined,
     ownUserId: selfUser.user_id,
   },
+  // If a given action is only relevant to a single test file, no need to
+  // provide a generic example of it here; just define it there.
 });
 
 // Ensure every `eg.action.foo` is some well-typed action.  (We don't simply
@@ -680,15 +707,62 @@ export const action = deepFreeze({
 (action: {| [string]: Action |});
 
 /* ========================================================================
- * Action fragments
+ * Action factories
  *
- * Partial actions, for those action types whose interior will almost always
- * need to be filled in with more data.
+ * Useful for action types where a static object of boilerplate data doesn't
+ * suffice.  Generally this is true where (a) there's some boilerplate data
+ * that's useful to supply here, but (b) there's some other places where a
+ * given test will almost always need to fill in specific data of its own.
+ *
+ * For action types without (b), a static example value `eg.action.foo` is
+ * enough.  For action types without (a), even that isn't necessary, because
+ * each test might as well define the action values it needs directly.
  */
 
-export const eventNewMessageActionBase /* \: $Diff<EventNewMessageAction, {| message: Message |}> */ = {
-  type: EVENT_NEW_MESSAGE,
-  id: 1001,
-  caughtUp: {},
-  ownUserId: selfUser.user_id,
-};
+/**
+ * An EVENT_NEW_MESSAGE action.
+ *
+ * The message argument can either have or omit a `flags` property; if
+ * omitted, it defaults to empty.  (The `message` property on an
+ * `EVENT_NEW_MESSAGE` action must have `flags`, while `Message` objects in
+ * some other contexts must not.  See comments on `Message` for details.)
+ */
+export const mkActionEventNewMessage = (
+  message: Message,
+  args?: {| caughtUp?: CaughtUpState, local_message_id?: number, ownUserId?: UserId |},
+): Action =>
+  deepFreeze({
+    type: EVENT_NEW_MESSAGE,
+    id: 1001,
+    caughtUp: {},
+    ownUserId: selfUser.user_id,
+
+    ...args,
+
+    message: { ...message, flags: message.flags ?? [] },
+  });
+
+// If a given action is only relevant to a single test file, no need to
+// provide a generic factory for it here; just define the test data there.
+
+/* ========================================================================
+ * Miscellaneous
+ */
+
+export const backgroundData: BackgroundData = deepFreeze({
+  alertWords: [],
+  allImageEmojiById: action.realm_init.data.realm_emoji,
+  auth: selfAuth,
+  debug: baseReduxState.session.debug,
+  doNotMarkMessagesAsRead: baseReduxState.settings.doNotMarkMessagesAsRead,
+  flags: baseReduxState.flags,
+  mute: [],
+  mutedUsers: Immutable.Map(),
+  ownUser: selfUser,
+  streams: getStreamsById(baseReduxState),
+  streamsByName: getStreamsByName(baseReduxState),
+  subscriptions: [],
+  unread: baseReduxState.unread,
+  theme: 'default',
+  twentyFourHourTime: false,
+});

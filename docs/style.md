@@ -21,6 +21,10 @@
   * [[link](#mention-fixed-issue)] Mention a fixed issue in both PR
     and commit message.
   * [[link](#fixes-format)] Write `Fixes: #1234` when fixing an issue.
+* [Language-independent](#language-independent)
+  * [[link](#catch-at-ui)] For exceptions that aren't bugs, catch them
+    in UI code and inform the user.
+  * [[link](#catch-specific)] Only catch specific, expected exceptions.
 * [JavaScript, Flow, JS libraries](#js)
   * [[link](#types-named-type)] Don't put "type" in the name of a
     type, usually.
@@ -28,6 +32,8 @@
     assertions the type-checker can use.
   * [[link](#immutable-provide-type)] Always provide a type when
     writing an empty `Immutable` value.
+  * [[link](#react-function-prop-defaults)] Don't use React
+    `defaultProps` for function components.
 * [Internal to Zulip and our codebase](#zulip)
   * [Zulip API bindings](#zulip-api-bindings)
     * [[link](#import-api)] Use `import * as api` and `api.doThing(…)`.
@@ -71,11 +77,11 @@ link as above.)
 
 
 **Answer in the branch the reviewer's questions.**
-Any time a reviewer asks a "why" question about a PR, we'll want the
-answer to make it into the actual commits.  Or if they find something
-confusing, we'll want it to be clear in the actual commits: ideally
-the code itself makes it clear, or if not then comments or the commit
-messages explain it.
+Any time a reviewer asks a "why" question about a PR, we'll want the answer
+to make it into the actual commits.  Or if they find something confusing,
+we'll want it to be clear in the actual commits: ideally the code itself
+makes it clear, or if not then code comments or the commit messages explain
+it.
 
 
 **Answer questions the reviewer *should* ask.**
@@ -240,6 +246,10 @@ basically amounts to an @-mention!  Other common lines include
 
 and there's no fixed list; people invent others.
 
+When inventing a label for a metadata line like this, note the
+formatting style: hyphens (`-`) instead of spaces, and in sentence case
+(i.e. capitalized only at the beginning).
+
 
 <div id="mentioning-commits" />
 
@@ -338,6 +348,60 @@ pick just one, and that's the one we use.
 [gh-close-issue-keywords]: https://help.github.com/en/github/managing-your-work-on-github/closing-issues-using-keywords
 
 
+<div id="language-independent" />
+
+## Language-independent
+
+<div id="catch-at-ui" />
+
+**For exceptions that aren't bugs, catch them in UI code and inform
+the user**:
+For some operations -- notably network requests and IO -- it's part of
+a function's interface that it might throw an exception for reasons
+that aren't a bug in anything, just the way the network (etc.) is at
+that moment.  When this kind of exception reaches our UI code, we
+generally want to catch it immediately and inform the user
+appropriately.
+
+(Sometimes we'll want to catch the exception even sooner than that,
+e.g. catching a failed network request in order to retry the request.)
+
+A lot of our existing code doesn't do this.  Typically this means that
+when the user touches a button which is supposed to make an API
+request, and the request fails, nothing happens -- it's as if they
+didn't touch the button at all.  But for new code, and when reworking
+the logic of old code, we make a practice of doing this.
+
+
+<div id="catch-specific" />
+
+**Only catch specific, expected exceptions**:
+When using constructs like JS's `try` / `catch`, keep things tightly
+scoped so that the `catch` block only applies to those exceptions that
+are expected and aren't bugs in the app, like network failures.
+
+Typically this is done by keeping the `try` block tightly scoped,
+around just one statement like `await api.doSomething(…)`.
+Alternatively the `catch` block can be limited to a particular type of
+exception that's specific enough to only cover the expected error;
+this works well in Kotlin but there isn't a great way to do it in JS.
+
+One reason we do this is so that the error handling in the `catch`
+block gets to be tightly focused and know exactly what the error was.
+For example if the `catch` block tells the user "Failed to send
+message", that'd be bad if the truth was that we successfully sent the
+message and then failed at some later step.
+
+More generally, if the exception wasn't expected and instead
+represents a bug, then fundamentally no error-handling logic can
+reliably get the operation back to a good state -- by definition,
+something happened that we weren't expecting -- so it isn't safe to
+pick up and carry on.
+
+Discussion elsewhere:
+[Effective Dart](https://dart.dev/guides/language/effective-dart/usage#error-handling)
+
+
 <div id="js" />
 
 ## JavaScript, Flow, JS libraries
@@ -401,6 +465,32 @@ This is essential in order to get effective type-checking of the
 code that uses the new collection.  (It's not clear if this is a bug
 in Flow, or a design limitation of Flow, or an issue in the Flow types
 provided by Immutable.js, or some combination.)
+
+
+<div id="react-function-prop-defaults" />
+
+**Don't use React `defaultProps` for function components**:
+When a React function component has a default value for one of its
+props, express that with a normal JS idiom, not with React's
+`defaultProps` feature.  This also means that in the component's type,
+the prop should be marked as optional (with `?:`).
+
+For example, if converting into a function component a class component
+that had a `defaultProps` like so:
+```js
+  static defaultProps = { foo: true };
+```
+a good translation is to use JS object destructuring with a default
+value, with a line like this at the top of the new function:
+```js
+  const { foo = true } = props;
+```
+and to change `foo: boolean` to `foo?: boolean` in the `Props` definition.
+
+The main reason for this is to keep the default, and the fact there is
+a default, visible at the top of the function.  This is helpful for
+reading the component's implementation as well as for looking at its
+interface in order to use it elsewhere.
 
 
 <div id="zulip" />

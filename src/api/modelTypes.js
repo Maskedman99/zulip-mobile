@@ -34,7 +34,31 @@ export type RealmEmojiById = $ReadOnly<{|
   [id: string]: ImageEmojiType,
 |}>;
 
+/**
+ * The only way servers before feature level 54 represent linkifiers.
+ */
 export type RealmFilter = [string, string, number];
+
+/**
+ * The way servers at feature level 54+ can represent linkifiers.
+ *
+ * Currently, this new format can be converted to the old without loss of
+ * information, so we do that at the edge and continue to represent the data
+ * internally with the old format.
+ */
+// TODO:
+// - When we've moved to a shared markdown implementation (#4242),
+//   change our internal representation to be the new
+//   `realm_linkifiers` format. (When doing so, also don't forget to
+//   change various variable and type definition names to be like
+//   `realm_linkifiers`.)
+// - When we drop support for servers older than 54, we can remove all
+//   our code that knows about the `realm_filters` format.
+export type RealmLinkifier = {|
+  id: number,
+  pattern: string,
+  url_format: string,
+|};
 
 //
 //
@@ -56,7 +80,7 @@ export type DevUser = {|
  * `realm_non_active_users` of a `/register` response.
  *
  * For details on the properties, see the Zulip API docs on `/users`:
- *   https://zulip.com/api/get-all-users#response
+ *   https://zulip.com/api/get-users#response
  * which returns almost the same set of properties.
  *
  * See also the comments on `UserProfile` in the server (lineno is approx.):
@@ -251,7 +275,7 @@ export type ClientPresence = {|
  * A user's presence status, including all information from all their clients.
  *
  * The `aggregated` property equals one of the others.  For details, see:
- *   https://zulip.com/api/get-presence
+ *   https://zulip.com/api/get-user-presence
  *
  * See also the app's `getAggregatedPresence`, which reimplements a version
  * of the logic to compute `aggregated`.
@@ -259,6 +283,14 @@ export type ClientPresence = {|
 export type UserPresence = {|
   aggregated: ClientPresence,
   [client: string]: ClientPresence,
+|};
+
+/** This is what appears in the `muted_users` server event.
+ * See https://chat.zulip.org/api/get-events#muted_users for details.
+ */
+export type MutedUser = {|
+  id: UserId,
+  timestamp: number,
 |};
 
 //
@@ -425,6 +457,47 @@ export type PmRecipientUser = $ReadOnly<{|
 |}>;
 
 /**
+ * The data encoded in a submessage to make the message a widget.
+ *
+ * Note that future server versions might introduce new types of widgets, so
+ * `widget_type` could be a value not included here.  But when it is one of
+ * these values, the rest of the object will follow this type.
+ */
+// Ideally we'd be able to express both the known and the unknown widget
+// types: we'd have another branch of this union which looked like
+//   | {| +widget_type: (string *other than* those above), +extra_data?: { ... } |}
+// But there doesn't seem to be a way to express that in Flow.
+export type WidgetData =
+  | {|
+      +widget_type: 'poll',
+      +extra_data?: {| +question?: string, +options?: $ReadOnlyArray<string> |},
+    |}
+  // We can write these down more specifically when we implement these widgets.
+  | {| +widget_type: 'todo', +extra_data?: { ... } |}
+  | {| +widget_type: 'zform', +extra_data?: { ... } |};
+
+/**
+ * The data encoded in a submessage that acts on a widget.
+ *
+ * The interpretation of this data, including the meaning of the `type`
+ * field, is specific to each widget type.
+ *
+ * We delegate actually processing these to shared code, so we don't specify
+ * the details further.
+ */
+export type WidgetEventData = { +type: string, ... };
+
+/**
+ * The data encoded in a `Submessage`.
+ *
+ * For widgets (the only existing use of submessages), the submessages array
+ * consists of:
+ *  * One submessage with `WidgetData`; then
+ *  * Zero or more submessages with `WidgetEventData`.
+ */
+export type SubmessageData = WidgetData | WidgetEventData;
+
+/**
  * Submessages are items containing extra data that can be added to a
  * message. Despite what their name might suggest, they are not a subtype
  * of the `Message` type, nor do they share almost any fields with it.
@@ -441,7 +514,9 @@ export type Submessage = $ReadOnly<{|
   message_id: number,
   sender_id: UserId,
   msg_type: 'widget', // only this type is currently available
-  content: string, // JSON string
+
+  /** A `SubmessageData` object, JSON-encoded. */
+  content: string,
 |}>;
 
 /**
@@ -599,7 +674,7 @@ export type StreamMessage = $ReadOnly<{|
  *  * `messages: {| [id]: Message |}` in our global Redux state.
  *
  * References include:
- *  * the two example events at https://zulip.com/api/get-events-from-queue
+ *  * the two example events at https://zulip.com/api/get-events
  *  * `process_message_event` in zerver/tornado/event_queue.py; the call
  *    `client.add_event(user_event)` makes the final determination of what
  *    goes into the event, so `message_dict` is the final value of `message`

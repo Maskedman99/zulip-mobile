@@ -21,6 +21,11 @@ export const getStreamsById: Selector<Map<number, Stream>> = createSelector(
   streams => new Map(streams.map(stream => [stream.stream_id, stream])),
 );
 
+export const getStreamsByName: Selector<Map<string, Stream>> = createSelector(
+  getStreams,
+  streams => new Map(streams.map(stream => [stream.name, stream])),
+);
+
 export const getSubscriptionsById: Selector<Map<number, Subscription>> = createSelector(
   getSubscriptions,
   subscriptions =>
@@ -92,7 +97,7 @@ export const getIsActiveStreamAnnouncementOnly: Selector<boolean, Narrow> = crea
  *
  * Gives undefined for narrows that are not stream or topic narrows.
  */
-export const getStreamColorForNarrow = (state: GlobalState, narrow: Narrow) => {
+export const getStreamColorForNarrow = (state: GlobalState, narrow: Narrow): string | void => {
   if (!isStreamOrTopicNarrow(narrow)) {
     return undefined;
   }

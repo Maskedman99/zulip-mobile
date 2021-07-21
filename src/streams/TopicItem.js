@@ -1,15 +1,26 @@
 /* @flow strict-local */
 import React, { useContext } from 'react';
 import { View } from 'react-native';
+// $FlowFixMe[untyped-import]
 import { useActionSheet } from '@expo/react-native-action-sheet';
+import invariant from 'invariant';
 
 import styles, { BRAND_COLOR, createStyleSheet } from '../styles';
 import { RawLabel, Touchable, UnreadCount } from '../common';
-import { showHeaderActionSheet } from '../message/messageActionSheet';
+import { showTopicActionSheet } from '../message/messageActionSheet';
 import type { ShowActionSheetWithOptions } from '../message/messageActionSheet';
 import { TranslationContext } from '../boot/TranslationProvider';
 import { useDispatch, useSelector } from '../react-redux';
-import { getAuth, getMute, getFlags, getSubscriptions, getOwnUser } from '../selectors';
+import {
+  getAuth,
+  getMute,
+  getFlags,
+  getSubscriptions,
+  getStreamsById,
+  getStreamsByName,
+  getOwnUser,
+} from '../selectors';
+import { getUnread } from '../unread/unreadModel';
 
 const componentStyles = createStyleSheet({
   selectedRow: {
@@ -27,16 +38,16 @@ const componentStyles = createStyleSheet({
 });
 
 type Props = $ReadOnly<{|
-  stream: string,
+  streamName: string,
   name: string,
   isMuted?: boolean,
   isSelected?: boolean,
   unreadCount?: number,
-  onPress: (topic: string, stream: string) => void,
+  onPress: (stream: string, topic: string) => void,
 |}>;
 
-export default function TopicItem(props: Props) {
-  const { name, stream, isMuted = false, isSelected = false, unreadCount = 0, onPress } = props;
+export default function TopicItem(props: Props): React$Node {
+  const { name, streamName, isMuted = false, isSelected = false, unreadCount = 0, onPress } = props;
 
   const showActionSheetWithOptions: ShowActionSheetWithOptions = useActionSheet()
     .showActionSheetWithOptions;
@@ -45,20 +56,26 @@ export default function TopicItem(props: Props) {
   const backgroundData = useSelector(state => ({
     auth: getAuth(state),
     mute: getMute(state),
+    streams: getStreamsById(state),
+    streamsByName: getStreamsByName(state),
     subscriptions: getSubscriptions(state),
+    unread: getUnread(state),
     ownUser: getOwnUser(state),
     flags: getFlags(state),
   }));
 
+  const stream = backgroundData.streamsByName.get(streamName);
+  invariant(stream !== undefined, 'No stream with provided stream name was found.');
+
   return (
     <Touchable
-      onPress={() => onPress(stream, name)}
+      onPress={() => onPress(streamName, name)}
       onLongPress={() => {
-        showHeaderActionSheet({
+        showTopicActionSheet({
           showActionSheetWithOptions,
           callbacks: { dispatch, _ },
           backgroundData,
-          stream,
+          streamId: stream.stream_id,
           topic: name,
         });
       }}

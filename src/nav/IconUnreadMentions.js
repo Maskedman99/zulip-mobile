@@ -1,34 +1,26 @@
 /* @flow strict-local */
 
-import React, { PureComponent } from 'react';
+import React from 'react';
 import { View } from 'react-native';
 
-import type { Dispatch } from '../types';
-import { connect } from '../react-redux';
+import { useSelector } from '../react-redux';
 import { getUnreadMentionsTotal } from '../selectors';
 import { IconMention } from '../common/Icons';
 import { CountOverlay } from '../common';
 
 type Props = $ReadOnly<{|
-  dispatch: Dispatch,
-  unreadMentionsTotal: number,
   color: string,
 |}>;
 
-class IconUnreadMentions extends PureComponent<Props> {
-  render() {
-    const { unreadMentionsTotal, color } = this.props;
+export default function IconUnreadMentions(props: Props): React$Node {
+  const { color } = props;
+  const unreadMentionsTotal = useSelector(getUnreadMentionsTotal);
 
-    return (
-      <View>
-        <CountOverlay unreadCount={unreadMentionsTotal}>
-          <IconMention size={24} color={color} />
-        </CountOverlay>
-      </View>
-    );
-  }
+  return (
+    <View>
+      <CountOverlay unreadCount={unreadMentionsTotal}>
+        <IconMention size={24} color={color} />
+      </CountOverlay>
+    </View>
+  );
 }
-
-export default connect(state => ({
-  unreadMentionsTotal: getUnreadMentionsTotal(state),
-}))(IconUnreadMentions);

@@ -2,11 +2,12 @@
 import { NativeModules, DeviceEventEmitter, Platform } from 'react-native';
 
 import * as NavigationService from '../nav/NavigationService';
-import type { Dispatch, SharedData, GetState } from '../types';
+import type { Dispatch, GetState } from '../types';
+import type { SharedData } from './types';
 import { navigateToSharing } from '../actions';
 
 const Sharing = NativeModules.Sharing ?? {
-  getInitialSharedContent: () =>
+  readInitialSharedContent: () =>
     // TODO: Implement on iOS.
     null,
 };
@@ -16,7 +17,7 @@ const goToSharing = (data: SharedData) => (dispatch: Dispatch, getState: GetStat
 };
 
 export const handleInitialShare = async (dispatch: Dispatch) => {
-  const initialSharedData: SharedData | null = await Sharing.getInitialSharedContent();
+  const initialSharedData: SharedData | null = await Sharing.readInitialSharedContent();
   if (initialSharedData !== null) {
     dispatch(goToSharing(initialSharedData));
   }

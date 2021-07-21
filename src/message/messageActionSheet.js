@@ -1,5 +1,6 @@
 /* @flow strict-local */
 import { Clipboard, Share, Alert } from 'react-native';
+import invariant from 'invariant';
 
 import * as NavigationService from '../nav/NavigationService';
 import type {
@@ -14,7 +15,9 @@ import type {
   Subscription,
   User,
   EditMessage,
+  Stream,
 } from '../types';
+import type { UnreadState } from '../unread/unreadModelTypes';
 import {
   getNarrowForReply,
   isPmNarrow,
@@ -28,6 +31,7 @@ import { doNarrow, deleteOutboxMessage, navigateToEmojiPicker, navigateToStream 
 import { navigateToMessageReactionScreen } from '../nav/navActions';
 import { deleteMessagesForTopic } from '../topics/topicActions';
 import * as logging from '../utils/logging';
+import { getUnreadCountForTopic } from '../unread/unreadModel';
 
 // TODO really this belongs in a libdef.
 export type ShowActionSheetWithOptions = (
@@ -35,11 +39,12 @@ export type ShowActionSheetWithOptions = (
   (number) => void,
 ) => void;
 
-type HeaderArgs = {
+type TopicArgs = {
   auth: Auth,
-  stream: string,
+  streamId: number,
   topic: string,
   subscriptions: Subscription[],
+  streams: Map<number, Stream>,
   dispatch: Dispatch,
   _: GetText,
   ...
@@ -55,7 +60,7 @@ type MessageArgs = {
   ...
 };
 
-type Button<Args: HeaderArgs | MessageArgs> = {|
+type Button<Args: TopicArgs | MessageArgs> = {|
   (Args): void | Promise<void>,
 
   /** The label for the button. */
@@ -118,19 +123,29 @@ const deleteMessage = async ({ auth, message, dispatch }) => {
 deleteMessage.title = 'Delete message';
 deleteMessage.errorMessage = 'Failed to delete message';
 
-const unmuteTopic = async ({ auth, stream, topic }) => {
-  await api.unmuteTopic(auth, stream, topic);
+const markTopicAsRead = async ({ auth, streamId, topic }) => {
+  await api.markTopicAsRead(auth, streamId, topic);
+};
+markTopicAsRead.title = 'Mark topic as read';
+markTopicAsRead.errorMessage = 'Failed to mark topic as read';
+
+const unmuteTopic = async ({ auth, streamId, topic, streams }) => {
+  const stream = streams.get(streamId);
+  invariant(stream !== undefined, 'Stream with provided streamId must exist.');
+  await api.setTopicMute(auth, stream.name, topic, false);
 };
 unmuteTopic.title = 'Unmute topic';
 unmuteTopic.errorMessage = 'Failed to unmute topic';
 
-const muteTopic = async ({ auth, stream, topic }) => {
-  await api.muteTopic(auth, stream, topic);
+const muteTopic = async ({ auth, streamId, topic, streams }) => {
+  const stream = streams.get(streamId);
+  invariant(stream !== undefined, 'Stream with provided streamId must exist.');
+  await api.setTopicMute(auth, stream.name, topic, true);
 };
 muteTopic.title = 'Mute topic';
 muteTopic.errorMessage = 'Failed to mute topic';
 
-const deleteTopic = async ({ auth, stream, topic, dispatch, _ }) => {
+const deleteTopic = async ({ auth, streamId, topic, dispatch, _ }) => {
   const alertTitle = _('Are you sure you want to delete the topic “{topic}”?', { topic });
   const AsyncAlert = async (): Promise<boolean> =>
     new Promise((resolve, reject) => {
@@ -157,35 +172,26 @@ const deleteTopic = async ({ auth, stream, topic, dispatch, _ }) => {
       );
     });
   if (await AsyncAlert()) {
-    await dispatch(deleteMessagesForTopic(stream, topic));
+    await dispatch(deleteMessagesForTopic(streamId, topic));
   }
 };
 deleteTopic.title = 'Delete topic';
 deleteTopic.errorMessage = 'Failed to delete topic';
 
-const unmuteStream = async ({ auth, stream, subscriptions }) => {
-  const sub = subscriptions.find(x => x.name === stream);
-  if (sub) {
-    await api.toggleMuteStream(auth, sub.stream_id, false);
-  }
+const unmuteStream = async ({ auth, streamId, subscriptions }) => {
+  await api.setSubscriptionProperty(auth, streamId, 'is_muted', false);
 };
 unmuteStream.title = 'Unmute stream';
 unmuteStream.errorMessage = 'Failed to unmute stream';
 
-const muteStream = async ({ auth, stream, subscriptions }) => {
-  const sub = subscriptions.find(x => x.name === stream);
-  if (sub) {
-    await api.toggleMuteStream(auth, sub.stream_id, true);
-  }
+const muteStream = async ({ auth, streamId, subscriptions }) => {
+  await api.setSubscriptionProperty(auth, streamId, 'is_muted', true);
 };
 muteStream.title = 'Mute stream';
 muteStream.errorMessage = 'Failed to mute stream';
 
-const showStreamSettings = ({ stream, subscriptions }) => {
-  const sub = subscriptions.find(x => x.name === stream);
-  if (sub) {
-    NavigationService.dispatch(navigateToStream(sub.stream_id));
-  }
+const showStreamSettings = ({ streamId, subscriptions }) => {
+  NavigationService.dispatch(navigateToStream(streamId));
 };
 showStreamSettings.title = 'Stream settings';
 showStreamSettings.errorMessage = 'Failed to show stream settings';
@@ -226,30 +232,38 @@ const cancel = params => {};
 cancel.title = 'Cancel';
 cancel.errorMessage = 'Failed to hide menu';
 
-export const constructHeaderActionButtons = ({
-  backgroundData: { mute, subscriptions, ownUser },
-  stream,
+export const constructTopicActionButtons = ({
+  backgroundData: { mute, ownUser, streams, subscriptions, unread },
+  streamId,
   topic,
 }: {|
   backgroundData: $ReadOnly<{
     mute: MuteState,
+    streams: Map<number, Stream>,
     subscriptions: Subscription[],
+    unread: UnreadState,
     ownUser: User,
     ...
   }>,
-  stream: string,
+  streamId: number,
   topic: string,
-|}): Button<HeaderArgs>[] => {
+|}): Button<TopicArgs>[] => {
   const buttons = [];
   if (ownUser.is_admin) {
     buttons.push(deleteTopic);
   }
-  if (isTopicMuted(stream, topic, mute)) {
+  const unreadCount = getUnreadCountForTopic(unread, streamId, topic);
+  if (unreadCount > 0) {
+    buttons.push(markTopicAsRead);
+  }
+  const stream = streams.get(streamId);
+  invariant(stream !== undefined, 'Stream with provided streamId not found.');
+  if (isTopicMuted(stream.name, topic, mute)) {
     buttons.push(unmuteTopic);
   } else {
     buttons.push(muteTopic);
   }
-  const sub = subscriptions.find(x => x.name === stream);
+  const sub = subscriptions.find(x => x.stream_id === streamId);
   if (sub && !sub.in_home_view) {
     buttons.push(unmuteStream);
   } else {
@@ -276,7 +290,7 @@ export const constructMessageActionButtons = ({
   backgroundData: { ownUser, flags },
   message,
   narrow,
-}: {
+}: {|
   backgroundData: $ReadOnly<{
     ownUser: User,
     flags: FlagsState,
@@ -284,7 +298,7 @@ export const constructMessageActionButtons = ({
   }>,
   message: Message,
   narrow: Narrow,
-}): Button<MessageArgs>[] => {
+|}): Button<MessageArgs>[] => {
   const buttons = [];
   if (messageNotDeleted(message)) {
     buttons.push(addReaction);
@@ -338,10 +352,7 @@ export const constructNonHeaderActionButtons = ({
   }
 };
 
-function makeButtonCallback<Args: HeaderArgs | MessageArgs>(
-  buttonList: Button<Args>[],
-  args: Args,
-) {
+function makeButtonCallback<Args: TopicArgs | MessageArgs>(buttonList: Button<Args>[], args: Args) {
   return buttonIndex => {
     (async () => {
       const pressedButton: Button<Args> = buttonList[buttonIndex];
@@ -392,12 +403,12 @@ export const showMessageActionSheet = ({
   );
 };
 
-export const showHeaderActionSheet = ({
+export const showTopicActionSheet = ({
   showActionSheetWithOptions,
   callbacks,
   backgroundData,
   topic,
-  stream,
+  streamId,
 }: {|
   showActionSheetWithOptions: ShowActionSheetWithOptions,
   callbacks: {|
@@ -407,29 +418,33 @@ export const showHeaderActionSheet = ({
   backgroundData: $ReadOnly<{
     auth: Auth,
     mute: MuteState,
+    streams: Map<number, Stream>,
     subscriptions: Subscription[],
+    unread: UnreadState,
     ownUser: User,
     flags: FlagsState,
     ...
   }>,
-  stream: string,
+  streamId: number,
   topic: string,
 |}): void => {
-  const buttonList = constructHeaderActionButtons({
+  const buttonList = constructTopicActionButtons({
     backgroundData,
-    stream,
+    streamId,
     topic,
   });
+  const stream = backgroundData.streams.get(streamId);
+  invariant(stream !== undefined, 'Stream with provided streamId not found.');
   showActionSheetWithOptions(
     {
-      title: `#${stream} > ${topic}`,
+      title: `#${stream.name} > ${topic}`,
       options: buttonList.map(button => callbacks._(button.title)),
       cancelButtonIndex: buttonList.length - 1,
     },
     makeButtonCallback(buttonList, {
       ...backgroundData,
       ...callbacks,
-      stream,
+      streamId,
       topic,
     }),
   );

@@ -106,20 +106,30 @@ export type FetchingState = {|
  *
  * Unlike almost all other subtrees of our state, this one can be
  * incomplete, always in exactly the same way that `MessagesState` is.
+ *
+ * We expect most of these flags to be very sparse: the number of messages
+ * you have starred, or where you're @-mentioned, is typically a very small
+ * fraction of the total number of messages you have. That's why it probably
+ * doesn't make sense for this data structure to explicitly indicate "not
+ * starred", "not @-mentioned", etc., for every known message. That could
+ * significantly increase the memory and storage requirement when we know
+ * about a lot of messages. If we need to distinguish "unknown message" from
+ * "message without flag", we can look up the message ID in
+ * `state.messages`.
  */
 export type FlagsState = {|
-  read: {| [messageId: number]: boolean |},
-  starred: {| [messageId: number]: boolean |},
-  collapsed: {| [messageId: number]: boolean |},
-  mentioned: {| [messageId: number]: boolean |},
-  wildcard_mentioned: {| [messageId: number]: boolean |},
-  summarize_in_home: {| [messageId: number]: boolean |},
-  summarize_in_stream: {| [messageId: number]: boolean |},
-  force_expand: {| [messageId: number]: boolean |},
-  force_collapse: {| [messageId: number]: boolean |},
-  has_alert_word: {| [messageId: number]: boolean |},
-  historical: {| [messageId: number]: boolean |},
-  is_me_message: {| [messageId: number]: boolean |},
+  read: {| [messageId: number]: true |},
+  starred: {| [messageId: number]: true |},
+  collapsed: {| [messageId: number]: true |},
+  mentioned: {| [messageId: number]: true |},
+  wildcard_mentioned: {| [messageId: number]: true |},
+  summarize_in_home: {| [messageId: number]: true |},
+  summarize_in_stream: {| [messageId: number]: true |},
+  force_expand: {| [messageId: number]: true |},
+  force_collapse: {| [messageId: number]: true |},
+  has_alert_word: {| [messageId: number]: true |},
+  historical: {| [messageId: number]: true |},
+  is_me_message: {| [messageId: number]: true |},
 |};
 
 export type FlagName = $Keys<FlagsState>;
@@ -165,6 +175,9 @@ export type MigrationsState = {|
 |};
 
 export type MuteState = MuteTuple[];
+
+/** A map from user IDs to the Unix timestamp in seconds when they were muted. */
+export type MutedUsersState = Immutable.Map<UserId, number>;
 
 /**
  * An index on `MessagesState`, listing messages in each narrow.
@@ -260,13 +273,31 @@ export type RealmState = {|
 // https://github.com/zulip/zulip-mobile/issues/4009#issuecomment-619280681.
 export type ThemeName = 'default' | 'night';
 
+/** What browser the user has set to use for opening links in messages.
+ *
+ * * embedded: The in-app browser
+ * * external: The user's default browser app
+ * * default: 'external' on iOS, 'embedded' on Android
+ *
+ * Use the `shouldUseInAppBrowser` function from src/utils/openLink.js in order to
+ * parse this.
+ *
+ * See https://chat.zulip.org/#narrow/stream/48-mobile/topic/in-app.20browser
+ * for the reasoning behind these options.
+ */
+export type BrowserPreference = 'embedded' | 'external' | 'default';
+
 export type SettingsState = {|
-  locale: string,
+  // The user's chosen language, as an IETF BCP 47 language tag.
+  language: string,
+
   theme: ThemeName,
   offlineNotification: boolean,
   onlineNotification: boolean,
   experimentalFeaturesEnabled: boolean,
   streamNotification: boolean,
+  browser: BrowserPreference,
+  doNotMarkMessagesAsRead: boolean,
 |};
 
 export type StreamsState = Stream[];
@@ -310,7 +341,7 @@ export type UsersState = User[];
  * See in particular `discardKeys`, `storeKeys`, and `cacheKeys`, which
  * identify which subtrees are persisted and which are not.
  */
-export type GlobalState = {|
+export type GlobalState = $ReadOnly<{|
   accounts: AccountsState,
   alertWords: AlertWordsState,
   caughtUp: CaughtUpState,
@@ -320,6 +351,7 @@ export type GlobalState = {|
   messages: MessagesState,
   migrations: MigrationsState,
   mute: MuteState,
+  mutedUsers: MutedUsersState,
   narrows: NarrowsState,
   outbox: OutboxState,
   pmConversations: PmConversationsState,
@@ -335,7 +367,16 @@ export type GlobalState = {|
   userGroups: UserGroupsState,
   userStatus: UserStatusState,
   users: UsersState,
-|};
+|}>;
+
+// No substate should allow `undefined`; our use of AsyncStorage
+// depends on it. (This check will also complain on `null`, which I
+// don't think we'd have a problem with. We could try to write this
+// differently if we want to allow `null`.)
+type NonMaybeProperties<O: { ... }> = $ObjMap<O, <V>(V) => $NonMaybeType<V>>;
+type NonMaybeGlobalState = NonMaybeProperties<GlobalState>;
+// This function definition will fail typechecking if GlobalState is wrong.
+(s: GlobalState): NonMaybeGlobalState => s; // eslint-disable-line no-unused-expressions
 
 /** A selector returning TResult, with extra parameter TParam. */
 // Seems like this should be OutputSelector... but for whatever reason,

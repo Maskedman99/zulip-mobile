@@ -6,6 +6,7 @@ import type {
   FlagsState,
   MessagesState,
   MuteState,
+  MutedUsersState,
   NarrowsState,
   TopicsState,
   PresenceState,
@@ -44,6 +45,8 @@ export const getMessages = (state: GlobalState): MessagesState => state.messages
 
 export const getMute = (state: GlobalState): MuteState => state.mute;
 
+export const getMutedUsers = (state: GlobalState): MutedUsersState => state.mutedUsers;
+
 export const getTyping = (state: GlobalState): TypingState => state.typing;
 
 export const getTopics = (state: GlobalState): TopicsState => state.topics;
@@ -62,9 +65,6 @@ export const getUsers = (state: GlobalState): User[] => state.users;
 export const getFetching = (state: GlobalState): FetchingState => state.fetching;
 
 export const getFlags = (state: GlobalState): FlagsState => state.flags;
-
-export const getReadFlags = (state: GlobalState): {| [messageId: number]: boolean |} =>
-  state.flags.read;
 
 export const getAllNarrows = (state: GlobalState): NarrowsState => state.narrows;
 

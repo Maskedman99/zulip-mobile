@@ -2,8 +2,10 @@
 
 import type {
   CrossRealmBot,
+  MutedUser,
   RealmEmojiById,
   RealmFilter,
+  RealmLinkifier,
   RecentPrivateConversation,
   Stream,
   Subscription,
@@ -32,6 +34,11 @@ export type MuteTuple = [string, string];
 
 export type InitialDataMutedTopics = {|
   muted_topics: MuteTuple[],
+|};
+
+/** Added in server version 4.0, feature level 48 */
+export type InitialDataMutedUsers = {|
+  muted_users?: MutedUser[],
 |};
 
 export type InitialDataPresence = {|
@@ -89,7 +96,7 @@ export type InitialDataRealm = {|
   /**
    * Added in server version 2.2, feature level 1.
    * Same meaning as in the server_settings response:
-   * https://zulipchat.com/api/server-settings
+   * https://zulip.com/api/get-server-settings
    */
   zulip_feature_level?: number,
 |};
@@ -98,8 +105,30 @@ export type InitialDataRealmEmoji = {|
   realm_emoji: RealmEmojiById,
 |};
 
+export type RawInitialDataRealmFilters = {|
+  // We still request this, since not all servers can provide the
+  // newer `realm_linkifiers` format.
+  realm_filters?: RealmFilter[],
+|};
+
+/**
+ * The realm_filters/realm_linkifiers data, post-transformation.
+ *
+ * If we got the newer `realm_linkifiers` format, this is the result of
+ * transforming that into the older `realm_filters` format. Otherwise, it's
+ * just what we received in the `realm_filters` format. So, named after
+ * realm_filters.
+ *
+ * See notes on `RealmFilter` and `RealmLinkifier`.
+ */
 export type InitialDataRealmFilters = {|
   realm_filters: RealmFilter[],
+|};
+
+export type InitialDataRealmLinkifiers = {|
+  // Possibly absent: Not all servers can provide this. See
+  // `InitialDataRealmFilters`.
+  realm_linkifiers?: RealmLinkifier[],
 |};
 
 export type RawInitialDataRealmUser = {|
@@ -311,10 +340,12 @@ export type InitialData = {|
   ...InitialDataAlertWords,
   ...InitialDataMessage,
   ...InitialDataMutedTopics,
+  ...InitialDataMutedUsers,
   ...InitialDataPresence,
   ...InitialDataRealm,
   ...InitialDataRealmEmoji,
   ...InitialDataRealmFilters,
+  ...InitialDataRealmLinkifiers,
   ...InitialDataRealmUser,
   ...InitialDataRealmUserGroups,
   ...InitialDataRecentPmConversations,
@@ -331,4 +362,5 @@ export type InitialData = {|
 export type RawInitialData = {|
   ...InitialData,
   ...RawInitialDataRealmUser,
+  ...RawInitialDataRealmFilters,
 |};

@@ -4,7 +4,8 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BRAND_COLOR, createStyleSheet } from '../styles';
-import { LoadingIndicator, ZulipStatusBar } from '.';
+// eslint-disable-next-line import/no-useless-path-segments
+import { LoadingIndicator, ZulipStatusBar } from './'; // Like '.'; see #4818.
 
 const componentStyles = createStyleSheet({
   center: {
@@ -20,7 +21,7 @@ type Props = $ReadOnly<{||}>;
 /**
  * Meant to be used to cover the whole screen.
  */
-export default function FullScreenLoading(props: Props) {
+export default function FullScreenLoading(props: Props): React$Node {
   const insets = useSafeAreaInsets();
 
   return (

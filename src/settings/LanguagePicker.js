@@ -4,14 +4,13 @@ import { FlatList } from 'react-native';
 
 import type { GetText } from '../types';
 import { TranslationContext } from '../boot/TranslationProvider';
-import { OptionDivider } from '../common';
+import { OptionDivider, SelectableOptionRow } from '../common';
 import languages from './languages';
 import type { Language } from './languages';
-import LanguagePickerItem from './LanguagePickerItem';
 
 type Props = $ReadOnly<{|
   value: string,
-  onValueChange: (locale: string) => void,
+  onValueChange: (tag: string) => void,
   filter: string,
 |}>;
 
@@ -54,14 +53,14 @@ export default class LanguagePicker extends PureComponent<Props> {
         initialNumToRender={languages.length}
         data={data}
         keyboardShouldPersistTaps="always"
-        keyExtractor={item => item.locale}
+        keyExtractor={item => item.tag}
         renderItem={({ item }) => (
-          <LanguagePickerItem
-            selected={item.locale === value}
-            onValueChange={onValueChange}
-            locale={item.locale}
-            name={item.name}
-            nativeName={item.nativeName}
+          <SelectableOptionRow
+            selected={item.tag === value}
+            onRequestSelectionChange={onValueChange}
+            itemKey={item.tag}
+            subtitle={item.name}
+            title={item.nativeName}
           />
         )}
       />

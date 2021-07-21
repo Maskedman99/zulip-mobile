@@ -4,11 +4,11 @@ import type { GeneralEvent } from './eventTypes';
 import { apiGet } from './apiFetch';
 
 type ApiResponsePollEvents = {|
-  ...ApiResponseSuccess,
+  ...$Exact<ApiResponseSuccess>,
   events: GeneralEvent[],
 |};
 
-/** See https://zulip.com/api/get-events-from-queue */
+/** See https://zulip.com/api/get-events */
 export default (auth: Auth, queueId: number, lastEventId: number): Promise<ApiResponsePollEvents> =>
   apiGet(
     auth,

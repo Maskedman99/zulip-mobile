@@ -3,7 +3,8 @@
 import React, { PureComponent } from 'react';
 import { View } from 'react-native';
 
-import { ComponentWithOverlay, UnreadCount } from '.';
+// eslint-disable-next-line import/no-useless-path-segments
+import { ComponentWithOverlay, UnreadCount } from './'; // Like '.'; see #4818.
 import { BRAND_COLOR, createStyleSheet } from '../styles';
 
 const styles = createStyleSheet({
@@ -18,7 +19,7 @@ type Props = $ReadOnly<{|
 |}>;
 
 export default class CountOverlay extends PureComponent<Props> {
-  render() {
+  render(): React$Node {
     const { children, unreadCount } = this.props;
 
     return (

@@ -7,17 +7,19 @@ import { isSameDay } from '../utils/date';
 export default (
   messages: $ReadOnlyArray<Message | Outbox>,
   narrow: Narrow,
-): HtmlPieceDescriptor[] => {
+): $ReadOnlyArray<HtmlPieceDescriptor> => {
   const showHeader = !isPmNarrow(narrow) && !isTopicNarrow(narrow);
 
-  let prevMessage = undefined;
-  const sections = [{ key: 0, data: [], message: null }];
-  messages.forEach(message => {
+  const pieces: HtmlPieceDescriptor[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    const prevMessage: typeof message | void = messages[i - 1];
+
     const diffDays =
       !!prevMessage
       && !isSameDay(new Date(prevMessage.timestamp * 1000), new Date(message.timestamp * 1000));
     if (!prevMessage || diffDays) {
-      sections[sections.length - 1].data.push({
+      pieces.push({
         key: `time${message.timestamp}`,
         type: 'time',
         timestamp: message.timestamp,
@@ -27,31 +29,22 @@ export default (
 
     const diffRecipient = !isSameRecipient(prevMessage, message);
     if (showHeader && diffRecipient) {
-      sections.push({
+      pieces.push({
+        type: 'header',
         key: `header${message.id}`,
-        message,
-        data: [],
+        subsequentMessage: message,
       });
     }
 
-    // TODO(#3764): Use sender_id, not sender_email.  Needs making
-    //   Outbox#sender_id required; which needs a migration to drop Outbox
-    //   values that lack it; which is fine once the release that adds it
-    //   has been out for a few weeks.
     const shouldGroupWithPrev =
-      !diffRecipient
-      && !diffDays
-      && !!prevMessage
-      && prevMessage.sender_email === message.sender_email;
+      !diffRecipient && !diffDays && !!prevMessage && prevMessage.sender_id === message.sender_id;
 
-    sections[sections.length - 1].data.push({
+    pieces.push({
       key: message.id,
       type: 'message',
       isBrief: shouldGroupWithPrev,
       message,
     });
-
-    prevMessage = message;
-  });
-  return sections;
+  }
+  return pieces;
 };

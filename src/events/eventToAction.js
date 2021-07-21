@@ -19,6 +19,7 @@ import {
   EVENT_USER_REMOVE,
   EVENT_USER_UPDATE,
   EVENT_MUTED_TOPICS,
+  EVENT_MUTED_USERS,
   EVENT_USER_GROUP_ADD,
   EVENT_USER_GROUP_REMOVE,
   EVENT_USER_GROUP_UPDATE,
@@ -59,6 +60,7 @@ const actionTypeOfEventType = {
   subscription: EVENT_SUBSCRIPTION,
   presence: EVENT_PRESENCE,
   muted_topics: EVENT_MUTED_TOPICS,
+  muted_users: EVENT_MUTED_USERS,
   realm_emoji: EVENT_REALM_EMOJI_UPDATE,
   realm_filters: EVENT_REALM_FILTERS,
   submessage: EVENT_SUBMESSAGE,
@@ -133,6 +135,7 @@ export default (state: GlobalState, event: $FlowFixMe): EventAction | null => {
         messageIds: event.message_ids ?? [event.message_id],
       };
 
+    case EventTypes.restart:
     case EventTypes.stream:
       return {
         type: EVENT,
@@ -143,8 +146,8 @@ export default (state: GlobalState, event: $FlowFixMe): EventAction | null => {
     case 'subscription':
     case 'presence':
     case 'muted_topics':
+    case 'muted_users':
     case 'realm_emoji':
-    case 'realm_filters':
     case 'submessage':
     case 'update_global_notifications':
     case 'update_display_settings':
@@ -153,6 +156,39 @@ export default (state: GlobalState, event: $FlowFixMe): EventAction | null => {
         ...event,
         type: actionTypeOfEventType[event.type],
       };
+
+    // See notes on `RealmFilter` and `RealmLinkifier` types.
+    case 'realm_filters': {
+      return {
+        ...event,
+        type: EVENT_REALM_FILTERS,
+        realm_filters: event.realm_filters,
+      };
+    }
+
+    // See notes on `RealmFilter` and `RealmLinkifier` types.
+    //
+    // Empirically, servers that know about the new format send two
+    // events for every change to the linkifiers: one in this new
+    // format and one in the 'realm_filters' format. That's whether we
+    // put 'realm_linkifiers' or 'realm_filters' in
+    // `fetch_event_types`.
+    //
+    // Shrug, because we can handle both events, and both events give
+    // the whole array of linkifiers, which we're happy to clobber the
+    // old state with.
+    case 'realm_linkifiers': {
+      return {
+        ...event,
+        type: EVENT_REALM_FILTERS,
+        // We do the same in `registerForEvents`'s transform function.
+        realm_filters: event.realm_linkifiers.map(({ pattern, url_format, id }) => [
+          pattern,
+          url_format,
+          id,
+        ]),
+      };
+    }
 
     case 'realm_user': {
       const realm = getCurrentRealm(state);

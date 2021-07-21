@@ -49,6 +49,13 @@ import { toggleSpoiler } from './spoilers';
  */
 declare var platformOS: string;
 
+/**
+ * used to control behavior based on debug settings.
+ * defined in `handleInitialLoad`.
+ * declared globally so as to use across functions.
+ */
+declare var doNotMarkMessagesAsRead: boolean;
+
 /* eslint-disable no-extend-native */
 
 /* Polyfill Array.from. Native in Chrome 45 and at least Safari 13.
@@ -312,6 +319,11 @@ function previousMessage(start: Element): ?Element {
   return walkToMessage(start.previousElementSibling, 'previousElementSibling');
 }
 
+/** The message after the given message, if any. */
+function nextMessage(start: Element): ?Element {
+  return walkToMessage(start.nextElementSibling, 'nextElementSibling');
+}
+
 /**
  * An element is visible if any part of it is visible on screen.
  *
@@ -437,7 +449,7 @@ function visibleReadMessageIds(): {| first: number, last: number |} {
   return { first, last };
 }
 
-/** DEPRECATED */
+/** DEPRECATED - consider using `node.closest('.message')` instead. */
 const getMessageNode = (node: ?Node): ?Node => {
   let curNode = node;
   while (curNode && curNode.parentNode && curNode.parentNode !== documentBody) {
@@ -502,7 +514,9 @@ const sendScrollMessage = () => {
     startMessageId: rangeHull.first,
     endMessageId: rangeHull.last,
   });
-  setMessagesReadAttributes(rangeHull);
+  if (!doNotMarkMessagesAsRead) {
+    setMessagesReadAttributes(rangeHull);
+  }
   // If there are no visible + read messages (for instance, the entire screen
   // is taken up by a single large message), then we don't want to update
   // prevMessageRange.  This way, if the user scrolled past some messages to
@@ -713,11 +727,25 @@ const handleInboundEventTyping = (uevent: WebViewInboundEventTyping) => {
   }
 };
 
+let readyRetryInterval: IntervalID | void = undefined;
+
+const signalReadyForEvents = () => {
+  sendMessage({ type: 'ready' });
+
+  // Keep retrying sending the ready event, in case the first one is sent while
+  // the queue isn't ready. While this isn't something I've observed in testing,
+  // we've previously had bugs that were caused by this (for instance, #3078)
+  readyRetryInterval = setInterval(() => {
+    sendMessage({ type: 'ready' });
+  }, 100);
+};
+
 /**
- * Echo back the handshake message, confirming the channel is ready.
+ * Stop resending the handshake message once we confirm that the channel is
+ * ready.
  */
 const handleInboundEventReady = (uevent: WebViewInboundEventReady) => {
-  sendMessage({ type: 'ready' });
+  clearInterval(readyRetryInterval);
 };
 
 /**
@@ -771,6 +799,18 @@ const handleMessageEvent: MessageEventListener = e => {
  * Handling user touches
  *
  */
+
+/**
+ * If the given message is muted, reveal it and all consecutive following
+ * messages from the same user.
+ */
+const revealMutedMessages = (message: Element) => {
+  let messageNode = message;
+  do {
+    messageNode.setAttribute('data-mute-state', 'shown');
+    messageNode = nextMessage(messageNode);
+  } while (messageNode && messageNode.classList.contains('message-brief'));
+};
 
 const requireAttribute = (e: Element, name: string): string => {
   const value = e.getAttribute(name);
@@ -887,6 +927,27 @@ documentBody.addEventListener('click', (e: MouseEvent) => {
     return;
   }
 
+  if (target.matches('.poll-vote')) {
+    const messageElement = target.closest('.message');
+    if (!messageElement) {
+      throw new Error('Message element not found');
+    }
+    // This duplicates some logic from PollData.handle.vote.outbound in
+    // @zulip/shared/js/poll_data.js, but it's much simpler to just duplicate
+    // it than it is to thread a callback all the way over here.
+    const current_vote = requireAttribute(target, 'data-voted') === 'true';
+    const vote = current_vote ? -1 : 1;
+    sendMessage({
+      type: 'vote',
+      messageId: requireNumericAttribute(messageElement, 'data-msg-id'),
+      key: requireAttribute(target, 'data-key'),
+      vote,
+    });
+    target.setAttribute('data-voted', (!current_vote).toString());
+    target.innerText = (parseInt(target.innerText, 10) + vote).toString();
+    return;
+  }
+
   if (target.matches('time')) {
     const originalText = requireAttribute(target, 'original-text');
     sendMessage({
@@ -926,9 +987,27 @@ const handleLongPress = (target: Element) => {
     return;
   }
 
+  // Prettier bug on nested ternary
+  /* prettier-ignore */
+  const targetType = target.matches('.header')
+    ? 'header'
+    : target.matches('a')
+      ? 'link'
+      : 'message';
+  const messageNode = target.closest('.message');
+
+  if (
+    targetType === 'message'
+    && messageNode
+    && messageNode.getAttribute('data-mute-state') === 'hidden'
+  ) {
+    revealMutedMessages(messageNode);
+    return;
+  }
+
   sendMessage({
     type: 'longPress',
-    target: target.matches('.header') ? 'header' : target.matches('a') ? 'link' : 'message',
+    target: targetType,
     messageId: getMessageIdFromNode(target),
     href: target.matches('a') ? requireAttribute(target, 'href') : null,
   });
@@ -974,3 +1053,9 @@ documentBody.addEventListener('touchmove', (e: TouchEvent) => {
 documentBody.addEventListener('drag', (e: DragEvent) => {
   clearTimeout(longPressTimeout);
 });
+
+// It's possible we could call this earlier, and would see some performance
+// benifit from doing so, since js.js takes about 16ms to run on a Pixel 3a.
+// However, I don't see that as being worth the possible bugs from things
+// loading too early.
+signalReadyForEvents();

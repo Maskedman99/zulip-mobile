@@ -21,15 +21,35 @@ export type Auth = {|
   email: string,
 |};
 
-export type ApiResponse = {|
-  result: string,
-  msg: string,
-|};
+/**
+ * The type shared by all Zulip API responses.
+ *
+ * See docs: https://zulip.com/api/rest-error-handling
+ *
+ * For more specific types, see:
+ *  * {@link ApiResponseSuccess}
+ *  * {@link ApiResponseErrorData}
+ */
+export type ApiResponse = {
+  +result: string,
+  +msg: string,
+  ...
+};
 
-export type ApiResponseSuccess = {|
-  result: 'success',
-  msg: '',
-|};
+/**
+ * The type shared by all non-error Zulip API responses.
+ *
+ * See docs: https://zulip.com/api/rest-error-handling
+ *
+ * See also:
+ *  * {@link ApiResponse}
+ *  * {@link ApiResponseErrorData}
+ */
+export type ApiResponseSuccess = {
+  +result: 'success',
+  +msg: '',
+  ...
+};
 
 /**
  * A list of current error codes can be found at:
@@ -73,8 +93,8 @@ export type ApiErrorCode = string;
  * This type is not exact: some error responses may contain additional data.
  */
 export type ApiResponseErrorData = {
-  code: ApiErrorCode,
-  msg: string,
-  result: 'error',
+  +code: ApiErrorCode,
+  +msg: string,
+  +result: 'error',
   ...
 };

@@ -1,7 +1,7 @@
 /* @flow strict-local */
-import { createSelector } from 'reselect';
+import { createSelector, defaultMemoize } from 'reselect';
 
-import type { Message, Narrow, HtmlPieceDescriptor, Selector } from '../types';
+import type { Message, Outbox, Narrow, Selector } from '../types';
 import {
   getAllNarrows,
   getFlags,
@@ -61,13 +61,9 @@ export const getPrivateMessages: Selector<Message[]> = createSelector(
   },
 );
 
-export const getHtmlPieceDescriptorsForShownMessages: Selector<
-  HtmlPieceDescriptor[],
-  Narrow,
-> = createSelector(
-  (state, narrow) => narrow,
-  getShownMessagesForNarrow,
-  (narrow, messages) => getHtmlPieceDescriptors(messages, narrow),
+export const getHtmlPieceDescriptorsForMessages = defaultMemoize(
+  (messages: $ReadOnlyArray<Message | Outbox>, narrow: Narrow) =>
+    getHtmlPieceDescriptors(messages, narrow),
 );
 
 export const getFirstUnreadIdInNarrow: Selector<number | null, Narrow> = createSelector(

@@ -15,7 +15,7 @@ import { doNarrow } from '../actions';
 
 type Props = $ReadOnly<{||}>;
 
-export default function UnreadCards(props: Props) {
+export default function UnreadCards(props: Props): React$Node {
   const dispatch = useDispatch();
   const conversations = useSelector(getUnreadConversations);
   const unreadStreamsAndTopics = useSelector(getUnreadStreamsAndTopicsSansMuted);
@@ -25,7 +25,7 @@ export default function UnreadCards(props: Props) {
   const unreadCards: Array<Card> = [
     {
       key: 'private',
-      data: [{ conversations, dispatch }],
+      data: [{ conversations }],
     },
     ...unreadStreamsAndTopics,
   ];
@@ -64,7 +64,7 @@ export default function UnreadCards(props: Props) {
         ) : (
           <TopicItem
             name={item.topic}
-            stream={section.streamName || ''}
+            streamName={section.streamName || ''}
             isMuted={section.isMuted || item.isMuted}
             isSelected={false}
             unreadCount={item.unread}

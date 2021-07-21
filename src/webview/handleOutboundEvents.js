@@ -1,6 +1,7 @@
 /* @flow strict-local */
 import { Clipboard, Alert } from 'react-native';
 
+import invariant from 'invariant';
 import * as NavigationService from '../nav/NavigationService';
 import * as api from '../api';
 import config from '../config';
@@ -23,7 +24,7 @@ import {
   navigateToLightbox,
   messageLinkPress,
 } from '../actions';
-import { showHeaderActionSheet, showMessageActionSheet } from '../message/messageActionSheet';
+import { showTopicActionSheet, showMessageActionSheet } from '../message/messageActionSheet';
 import { ensureUnreachable } from '../types';
 import { base64Utf8Decode } from '../utils/encoding';
 
@@ -131,6 +132,13 @@ type WebViewOutboundEventTimeDetails = {|
   originalText: string,
 |};
 
+type WebViewOutboundEventVote = {|
+  type: 'vote',
+  messageId: number,
+  key: string,
+  vote: number,
+|};
+
 export type WebViewOutboundEvent =
   | WebViewOutboundEventReady
   | WebViewOutboundEventScroll
@@ -145,7 +153,8 @@ export type WebViewOutboundEvent =
   | WebViewOutboundEventWarn
   | WebViewOutboundEventError
   | WebViewOutboundEventMention
-  | WebViewOutboundEventTimeDetails;
+  | WebViewOutboundEventTimeDetails
+  | WebViewOutboundEventVote;
 
 // TODO: Consider completing this and making it exact, once
 // `MessageList`'s props are type-checked.
@@ -171,8 +180,8 @@ const fetchMore = (props: Props, event: WebViewOutboundEventScroll) => {
 };
 
 const markRead = (props: Props, event: WebViewOutboundEventScroll) => {
-  const { debug, flags, auth } = props.backgroundData;
-  if (debug.doNotMarkMessagesAsRead) {
+  const { doNotMarkMessagesAsRead, flags, auth } = props.backgroundData;
+  if (doNotMarkMessagesAsRead) {
     return;
   }
   const unreadMessageIds = filterUnreadMessagesInRange(
@@ -181,9 +190,7 @@ const markRead = (props: Props, event: WebViewOutboundEventScroll) => {
     event.startMessageId,
     event.endMessageId,
   );
-  if (unreadMessageIds.length > 0) {
-    api.queueMarkAsRead(auth, unreadMessageIds);
-  }
+  api.queueMarkAsRead(auth, unreadMessageIds);
 };
 
 const handleImage = (props: Props, src: string, messageId: number) => {
@@ -214,11 +221,14 @@ const handleLongPress = (
   const { dispatch, showActionSheetWithOptions, backgroundData, narrow, startEditMessage } = props;
   if (target === 'header') {
     if (message.type === 'stream') {
-      showHeaderActionSheet({
+      const streamName = streamNameOfStreamMessage(message);
+      const stream = backgroundData.streamsByName.get(streamName);
+      invariant(stream !== undefined, 'No stream with provided stream name was found.');
+      showTopicActionSheet({
         showActionSheetWithOptions,
         callbacks: { dispatch, _ },
         backgroundData,
-        stream: streamNameOfStreamMessage(message),
+        streamId: stream.stream_id,
         topic: message.subject,
       });
     } else if (message.type === 'private') {
@@ -308,6 +318,19 @@ export const handleWebViewOutboundEvent = (
         originalText: event.originalText,
       });
       Alert.alert('', alertText);
+      break;
+    }
+
+    case 'vote': {
+      api.sendSubmessage(
+        props.backgroundData.auth,
+        event.messageId,
+        JSON.stringify({
+          type: 'vote',
+          key: event.key,
+          vote: event.vote,
+        }),
+      );
       break;
     }
 

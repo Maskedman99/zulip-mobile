@@ -1,10 +1,10 @@
 /* @flow strict-local */
-import React, { Component } from 'react';
+import React, { Component, type ComponentType } from 'react';
 import { Platform, NativeModules } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { WebViewNavigation } from 'react-native-webview';
-import { connectActionSheet } from '@expo/react-native-action-sheet';
 
+import { connectActionSheet } from '../react-native-action-sheet';
 import type {
   AlertWordsState,
   Auth,
@@ -15,11 +15,13 @@ import type {
   GetText,
   Message,
   MuteState,
+  MutedUsersState,
   Narrow,
   Outbox,
   ImageEmojiType,
   HtmlPieceDescriptor,
   Subscription,
+  Stream,
   ThemeName,
   User,
   UserOrBot,
@@ -33,19 +35,20 @@ import {
   getAllImageEmojiById,
   getCurrentTypingUsers,
   getDebug,
-  getHtmlPieceDescriptorsForShownMessages,
   getFlags,
   getFetchingForNarrow,
-  getFirstUnreadIdInNarrow,
   getMute,
+  getMutedUsers,
   getOwnUser,
   getSettings,
   getSubscriptions,
-  getShownMessagesForNarrow,
+  getStreamsById,
+  getStreamsByName,
   getRealm,
 } from '../selectors';
 import { withGetText } from '../boot/TranslationProvider';
 import type { ShowActionSheetWithOptions } from '../message/messageActionSheet';
+import { getHtmlPieceDescriptorsForMessages } from '../message/messageSelectors';
 import type { WebViewInboundEvent } from './generateInboundEvents';
 import type { WebViewOutboundEvent } from './handleOutboundEvents';
 import getHtml from './html/html';
@@ -55,6 +58,8 @@ import { handleWebViewOutboundEvent } from './handleOutboundEvents';
 import { base64Utf8Encode } from '../utils/encoding';
 import * as logging from '../utils/logging';
 import { tryParseUrl } from '../utils/url';
+import type { UnreadState } from '../unread/unreadModelTypes';
+import { getUnread } from '../unread/unreadModel';
 
 // ESLint doesn't notice how `this.props` escapes, and complains about some
 // props not being used here.
@@ -75,13 +80,26 @@ export type BackgroundData = $ReadOnly<{|
   allImageEmojiById: $ReadOnly<{| [id: string]: ImageEmojiType |}>,
   auth: Auth,
   debug: Debug,
+  doNotMarkMessagesAsRead: boolean,
   flags: FlagsState,
   mute: MuteState,
+  mutedUsers: MutedUsersState,
   ownUser: User,
+  streams: Map<number, Stream>,
+  streamsByName: Map<string, Stream>,
   subscriptions: Subscription[],
+  unread: UnreadState,
   theme: ThemeName,
   twentyFourHourTime: boolean,
 |}>;
+
+type OuterProps = {|
+  narrow: Narrow,
+  messages: $ReadOnlyArray<Message | Outbox>,
+  initialScrollMessageId: number | null,
+  showMessagePlaceholders: boolean,
+  startEditMessage: (editMessage: EditMessage) => void,
+|};
 
 type SelectorProps = {|
   // Data independent of the particular narrow or messages we're displaying.
@@ -90,18 +108,13 @@ type SelectorProps = {|
   // The remaining props contain data specific to the particular narrow or
   // particular messages we're displaying.  Data that's independent of those
   // should go in `BackgroundData`, above.
-  initialScrollMessageId: number | null,
   fetching: Fetching,
-  messages: $ReadOnlyArray<Message | Outbox>,
-  htmlPieceDescriptorsForShownMessages: HtmlPieceDescriptor[],
+  htmlPieceDescriptorsForShownMessages: $ReadOnlyArray<HtmlPieceDescriptor>,
   typingUsers: $ReadOnlyArray<UserOrBot>,
 |};
 
-// TODO get a type for `connectActionSheet` so this gets fully type-checked.
 export type Props = $ReadOnly<{|
-  narrow: Narrow,
-  showMessagePlaceholders: boolean,
-  startEditMessage: (editMessage: EditMessage) => void,
+  ...OuterProps,
 
   dispatch: Dispatch,
   ...SelectorProps,
@@ -142,62 +155,23 @@ const assetsUrl =
  */
 const webviewAssetsUrl = new URL('webview/', assetsUrl);
 
-class MessageList extends Component<Props> {
+class MessageListInner extends Component<Props> {
   static contextType = ThemeContext;
   context: ThemeData;
 
-  webview: ?WebView;
-  readyRetryInterval: IntervalID | void;
+  webviewRef = React.createRef<React$ElementRef<typeof WebView>>();
   sendInboundEventsIsReady: boolean;
   unsentInboundEvents: WebViewInboundEvent[] = [];
-
-  componentDidMount() {
-    this.setupSendInboundEvents();
-  }
-
-  componentWillUnmount() {
-    clearInterval(this.readyRetryInterval);
-    this.readyRetryInterval = undefined;
-  }
 
   handleError = (event: mixed) => {
     console.error(event); // eslint-disable-line
   };
 
-  /**
-   * Initiate round-trip handshakes with the WebView, until one succeeds.
-   */
-  setupSendInboundEvents = (): void => {
-    const timeAtSetup = Date.now();
-    let attempts: number = 0;
-    let hasLogged: boolean = false;
-
-    clearInterval(this.readyRetryInterval);
-    this.readyRetryInterval = setInterval(() => {
-      const timeElapsedMs: number = Date.now() - timeAtSetup;
-      if (timeElapsedMs > 1000 && hasLogged === false) {
-        logging.warn('Possible infinite loop in WebView "ready" setup', {
-          attempts,
-          timeElapsedMs,
-        });
-        hasLogged = true;
-      }
-
-      if (!this.sendInboundEventsIsReady) {
-        this.sendInboundEvents([{ type: 'ready' }]);
-        attempts++;
-      } else {
-        clearInterval(this.readyRetryInterval);
-        this.readyRetryInterval = undefined;
-      }
-    }, 30);
-  };
-
   sendInboundEvents = (uevents: WebViewInboundEvent[]): void => {
-    if (this.webview && uevents.length > 0) {
-      /* $FlowFixMe[prop-missing]: This `postMessage` is undocumented;
+    if (this.webviewRef.current !== null && uevents.length > 0) {
+      /* $FlowFixMe[incompatible-type]: This `postMessage` is undocumented;
          tracking as #3572. */
-      const secretWebView: { postMessage: (string, string) => void, ... } = this.webview;
+      const secretWebView: { postMessage: (string, string) => void, ... } = this.webviewRef.current;
       secretWebView.postMessage(base64Utf8Encode(JSON.stringify(uevents)), '*');
     }
   };
@@ -206,7 +180,7 @@ class MessageList extends Component<Props> {
     const eventData: WebViewOutboundEvent = JSON.parse(event.nativeEvent.data);
     if (eventData.type === 'ready') {
       this.sendInboundEventsIsReady = true;
-      this.sendInboundEvents(this.unsentInboundEvents);
+      this.sendInboundEvents([{ type: 'ready' }, ...this.unsentInboundEvents]);
       this.unsentInboundEvents = [];
     } else {
       const { _ } = this.props;
@@ -233,17 +207,20 @@ class MessageList extends Component<Props> {
       initialScrollMessageId,
       narrow,
       showMessagePlaceholders,
+      _,
     } = this.props;
-    const contentHtml = contentHtmlFromPieceDescriptors(
+    const contentHtml = contentHtmlFromPieceDescriptors({
       backgroundData,
       narrow,
-      htmlPieceDescriptorsForShownMessages,
-    );
-    const { auth, theme } = backgroundData;
+      htmlPieceDescriptors: htmlPieceDescriptorsForShownMessages,
+      _,
+    });
+    const { auth, theme, doNotMarkMessagesAsRead } = backgroundData;
     const html: string = getHtml(contentHtml, theme, {
       scrollMessageId: initialScrollMessageId,
       auth,
       showMessagePlaceholders,
+      doNotMarkMessagesAsRead,
     });
 
     /**
@@ -315,9 +292,7 @@ class MessageList extends Component<Props> {
         onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
         decelerationRate="normal"
         style={{ backgroundColor: 'transparent' }}
-        ref={webview => {
-          this.webview = webview;
-        }}
+        ref={this.webviewRef}
         onMessage={this.handleMessage}
         onError={this.handleError}
       />
@@ -325,51 +300,40 @@ class MessageList extends Component<Props> {
   }
 }
 
-type OuterProps = {|
-  narrow: Narrow,
-  showMessagePlaceholders: boolean,
+const MessageList: ComponentType<OuterProps> = connect<SelectorProps, _, _>(
+  (state, props: OuterProps) => {
+    // TODO Ideally this ought to be a caching selector that doesn't change
+    // when the inputs don't.  Doesn't matter in a practical way here, because
+    // we have a `shouldComponentUpdate` that doesn't look at this prop... but
+    // it'd be better to set an example of the right general pattern.
+    const backgroundData: BackgroundData = {
+      alertWords: state.alertWords,
+      allImageEmojiById: getAllImageEmojiById(state),
+      auth: getAuth(state),
+      debug: getDebug(state),
+      doNotMarkMessagesAsRead: getSettings(state).doNotMarkMessagesAsRead,
+      flags: getFlags(state),
+      mute: getMute(state),
+      mutedUsers: getMutedUsers(state),
+      ownUser: getOwnUser(state),
+      streams: getStreamsById(state),
+      streamsByName: getStreamsByName(state),
+      subscriptions: getSubscriptions(state),
+      unread: getUnread(state),
+      theme: getSettings(state).theme,
+      twentyFourHourTime: getRealm(state).twentyFourHourTime,
+    };
 
-  /* Remaining props are derived from `narrow` by default. */
+    return {
+      backgroundData,
+      fetching: getFetchingForNarrow(state, props.narrow),
+      htmlPieceDescriptorsForShownMessages: getHtmlPieceDescriptorsForMessages(
+        props.messages,
+        props.narrow,
+      ),
+      typingUsers: getCurrentTypingUsers(state, props.narrow),
+    };
+  },
+)(connectActionSheet(withGetText(MessageListInner)));
 
-  messages?: Message[],
-  htmlPieceDescriptorsForShownMessages?: HtmlPieceDescriptor[],
-  initialScrollMessageId?: number | null,
-
-  /* Passing these two from the parent is kind of a hack; search uses it
-     to hard-code some behavior. */
-  fetching?: Fetching,
-  typingUsers?: UserOrBot[],
-|};
-
-export default connect<SelectorProps, _, _>((state, props: OuterProps) => {
-  // TODO Ideally this ought to be a caching selector that doesn't change
-  // when the inputs don't.  Doesn't matter in a practical way here, because
-  // we have a `shouldComponentUpdate` that doesn't look at this prop... but
-  // it'd be better to set an example of the right general pattern.
-  const backgroundData: BackgroundData = {
-    alertWords: state.alertWords,
-    allImageEmojiById: getAllImageEmojiById(state),
-    auth: getAuth(state),
-    debug: getDebug(state),
-    flags: getFlags(state),
-    mute: getMute(state),
-    ownUser: getOwnUser(state),
-    subscriptions: getSubscriptions(state),
-    theme: getSettings(state).theme,
-    twentyFourHourTime: getRealm(state).twentyFourHourTime,
-  };
-
-  return {
-    backgroundData,
-    initialScrollMessageId:
-      props.initialScrollMessageId !== undefined
-        ? props.initialScrollMessageId
-        : getFirstUnreadIdInNarrow(state, props.narrow),
-    fetching: props.fetching || getFetchingForNarrow(state, props.narrow),
-    messages: props.messages || getShownMessagesForNarrow(state, props.narrow),
-    htmlPieceDescriptorsForShownMessages:
-      props.htmlPieceDescriptorsForShownMessages
-      || getHtmlPieceDescriptorsForShownMessages(state, props.narrow),
-    typingUsers: props.typingUsers || getCurrentTypingUsers(state, props.narrow),
-  };
-})(connectActionSheet(withGetText(MessageList)));
+export default MessageList;

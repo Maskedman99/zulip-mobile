@@ -1,28 +1,35 @@
 /* @flow strict-local */
-import type { Narrow, HtmlPieceDescriptor } from '../../types';
+import type { GetText, Narrow, HtmlPieceDescriptor } from '../../types';
+import { ensureUnreachable } from '../../generics';
 import type { BackgroundData } from '../MessageList';
 
 import messageAsHtml from './messageAsHtml';
 import messageHeaderAsHtml from './messageHeaderAsHtml';
 import timeRowAsHtml from './timeRowAsHtml';
 
-export default (
+export default ({
+  backgroundData,
+  narrow,
+  htmlPieceDescriptors,
+  _,
+}: {|
   backgroundData: BackgroundData,
   narrow: Narrow,
-  htmlPieceDescriptors: HtmlPieceDescriptor[],
-): string => {
-  const pieces = [];
-  htmlPieceDescriptors.forEach(section => {
-    if (section.message !== null) {
-      pieces.push(messageHeaderAsHtml(backgroundData, narrow, section.message));
-    }
-    section.data.forEach(item => {
-      if (item.type === 'time') {
-        pieces.push(timeRowAsHtml(item.timestamp, item.subsequentMessage));
-      } else {
-        pieces.push(messageAsHtml(backgroundData, item.message, item.isBrief));
+  htmlPieceDescriptors: $ReadOnlyArray<HtmlPieceDescriptor>,
+  _: GetText,
+|}): string =>
+  htmlPieceDescriptors
+    .map(pieceDescriptor => {
+      switch (pieceDescriptor.type) {
+        case 'time':
+          return timeRowAsHtml(pieceDescriptor.timestamp, pieceDescriptor.subsequentMessage);
+        case 'header':
+          return messageHeaderAsHtml(backgroundData, narrow, pieceDescriptor.subsequentMessage);
+        case 'message':
+          return messageAsHtml(backgroundData, pieceDescriptor.message, pieceDescriptor.isBrief, _);
+        default:
+          ensureUnreachable(pieceDescriptor);
+          throw new Error(`Unidentified pieceDescriptor.type: '${pieceDescriptor.type}'`);
       }
-    });
-  });
-  return pieces.join('');
-};
+    })
+    .join('');

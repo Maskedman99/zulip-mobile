@@ -158,19 +158,19 @@ declare module 'react-intl' {
     +MISSING_INTL_API: 'MISSING_INTL_API', // "MISSING_INTL_API"
   |};
   declare interface FieldData {
-    // $FlowFixMe - illegal name (these fixmes added in TS to Flow translation)
+    // $FlowFixMe[unsupported-syntax] - illegal name (these fixmes added in TS to Flow translation)
     '0'?: string;
-    // $FlowFixMe - illegal name
+    // $FlowFixMe[unsupported-syntax] - illegal name
     '1'?: string;
-    // $FlowFixMe - illegal name
+    // $FlowFixMe[unsupported-syntax] - illegal name
     '-1'?: string;
-    // $FlowFixMe - illegal name
+    // $FlowFixMe[unsupported-syntax] - illegal name
     '2'?: string;
-    // $FlowFixMe - illegal name
+    // $FlowFixMe[unsupported-syntax] - illegal name
     '-2'?: string;
-    // $FlowFixMe - illegal name
+    // $FlowFixMe[unsupported-syntax] - illegal name
     '3'?: string;
-    // $FlowFixMe - illegal name
+    // $FlowFixMe[unsupported-syntax] - illegal name
     '-3'?: string;
     future: RelativeTimeData;
     past: RelativeTimeData;
@@ -676,11 +676,11 @@ declare module 'react-intl' {
     column: number;
   }
   // Changed from interface to type in TS to Flow translation
-  declare export type MessageDescriptor = {
+  declare export type MessageDescriptor = {|
     id?: string | number,
     description?: string | {| [key: string]: any |},
     defaultMessage?: string,
-  };
+  |};
   declare type MessageFormatElement =
     | LiteralElement
     | ArgumentElement
@@ -838,11 +838,12 @@ declare module 'react-intl' {
     ...
   } & FormatPluralOptions;
   declare type Props_3<V: {| [key: string]: any |} = {| [key: string]: React$Node |}> = {
+    ...MessageDescriptor,
     values?: V,
     tagName?: React_2.ElementType<any>,
     children?: (...nodes: React_2.ReactNodeArray) => React$Node,
     ...
-  } & MessageDescriptor;
+  };
   declare export var RawIntlProvider: React_2.Provider<IntlShape>;
   declare export class ReactIntlError<
     T: $Values<typeof ReactIntlErrorCode> = typeof ReactIntlErrorCode.FORMAT_ERROR,

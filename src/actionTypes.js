@@ -18,6 +18,7 @@ import {
   MESSAGE_FETCH_COMPLETE,
   INITIAL_FETCH_START,
   INITIAL_FETCH_COMPLETE,
+  INITIAL_FETCH_ABORT,
   SETTINGS_CHANGE,
   DRAFT_UPDATE,
   PRESENCE_RESPONSE,
@@ -46,6 +47,7 @@ import {
   EVENT_ALERT_WORDS,
   INIT_TOPICS,
   EVENT_MUTED_TOPICS,
+  EVENT_MUTED_USERS,
   EVENT_REALM_FILTERS,
   EVENT_USER_REMOVE,
   EVENT_USER_UPDATE,
@@ -54,9 +56,17 @@ import {
   EVENT_SUBMESSAGE,
   EVENT_SUBSCRIPTION,
   EVENT,
+  DISMISS_SERVER_COMPAT_NOTICE,
 } from './actionConstants';
 
-import type { MessageEvent, PresenceEvent, StreamEvent, SubmessageEvent } from './api/eventTypes';
+import type {
+  MessageEvent,
+  MutedUsersEvent,
+  PresenceEvent,
+  StreamEvent,
+  SubmessageEvent,
+  RestartEvent,
+} from './api/eventTypes';
 
 import type {
   Orientation,
@@ -101,7 +111,7 @@ import type { ZulipVersion } from './utils/zulipVersion';
  */
 type RehydrateAction = {|
   type: typeof REHYDRATE,
-  payload: GlobalState | { accounts: null } | {||} | void,
+  payload: $ReadOnly<$ObjMap<$Rest<GlobalState, { ... }>, <V>(V) => V | null>> | void,
   error: mixed,
 |};
 
@@ -123,6 +133,10 @@ type DebugFlagToggleAction = {|
   type: typeof DEBUG_FLAG_TOGGLE,
   key: string,
   value: boolean,
+|};
+
+type DismissServerCompatNoticeAction = {|
+  type: typeof DISMISS_SERVER_COMPAT_NOTICE,
 |};
 
 type AccountSwitchAction = {|
@@ -181,7 +195,7 @@ type MessageFetchStartAction = {|
 /**
  * Any unexpected failure in a message fetch.
  *
- * Includes internal server errors and any errors we throw when
+ * Includes request timeout errors and any errors we throw when
  * validating and reshaping the server data at the edge.
  *
  * In an ideal crunchy-shell world [1], none of these will be thrown
@@ -220,6 +234,19 @@ type InitialFetchStartAction = {|
 
 type InitialFetchCompleteAction = {|
   type: typeof INITIAL_FETCH_COMPLETE,
+|};
+
+export type InitialFetchAbortReason = 'server' | 'network' | 'timeout' | 'unexpected';
+
+/**
+ * Notify Redux that we've given up on the initial fetch.
+ *
+ * Not for unrecoverable errors, like ApiErrors, which indicate that we
+ * tried and failed, not that we gave up trying.
+ */
+type InitialFetchAbortAction = {|
+  type: typeof INITIAL_FETCH_ABORT,
+  reason: InitialFetchAbortReason,
 |};
 
 type ServerEvent = {|
@@ -293,7 +320,7 @@ type EventSubscriptionPeerRemoveAction = {|
 
 type GenericEventAction = {|
   type: typeof EVENT,
-  event: StreamEvent,
+  event: StreamEvent | RestartEvent,
 |};
 
 type EventNewMessageAction = {|
@@ -428,6 +455,11 @@ type EventMutedTopicsAction = {|
   muted_topics: MuteState,
 |};
 
+type EventMutedUsersAction = {|
+  ...MutedUsersEvent,
+  type: typeof EVENT_MUTED_USERS,
+|};
+
 type EventUserGroupAddAction = {|
   ...ServerEvent,
   type: typeof EVENT_USER_GROUP_ADD,
@@ -512,6 +544,7 @@ export type EventAction =
   | EventAlertWordsAction
   | EventMessageDeleteAction
   | EventMutedTopicsAction
+  | EventMutedUsersAction
   | EventNewMessageAction
   | EventSubmessageAction
   | EventPresenceAction
@@ -583,7 +616,11 @@ type InitTopicsAction = {|
 
 type AccountAction = AccountSwitchAction | AccountRemoveAction | LoginSuccessAction | LogoutAction;
 
-type LoadingAction = DeadQueueAction | InitialFetchStartAction | InitialFetchCompleteAction;
+type LoadingAction =
+  | DeadQueueAction
+  | InitialFetchStartAction
+  | InitialFetchCompleteAction
+  | InitialFetchAbortAction;
 
 type MessageAction = MessageFetchStartAction | MessageFetchErrorAction | MessageFetchCompleteAction;
 
@@ -597,6 +634,7 @@ type SessionAction =
   | AppOrientationAction
   | GotPushTokenAction
   | DebugFlagToggleAction
+  | DismissServerCompatNoticeAction
   | ToggleOutboxSendingAction;
 
 /** Covers all actions we ever `dispatch`. */

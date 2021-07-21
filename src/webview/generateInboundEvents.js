@@ -1,4 +1,5 @@
 /* @flow strict-local */
+// $FlowFixMe[untyped-import]
 import isEqual from 'lodash.isequal';
 
 import type { Auth, FlagsState } from '../types';
@@ -47,11 +48,12 @@ export type WebViewInboundEvent =
 
 const updateContent = (prevProps: Props, nextProps: Props): WebViewInboundEventContent => {
   const content = htmlBody(
-    contentHtmlFromPieceDescriptors(
-      nextProps.backgroundData,
-      nextProps.narrow,
-      nextProps.htmlPieceDescriptorsForShownMessages,
-    ),
+    contentHtmlFromPieceDescriptors({
+      backgroundData: nextProps.backgroundData,
+      narrow: nextProps.narrow,
+      htmlPieceDescriptors: nextProps.htmlPieceDescriptorsForShownMessages,
+      _: nextProps._,
+    }),
     nextProps.showMessagePlaceholders,
   );
   const transitionProps = getMessageTransitionProps(prevProps, nextProps);
@@ -98,6 +100,8 @@ export default function generateInboundEvents(
   prevProps: Props,
   nextProps: Props,
 ): WebViewInboundEvent[] {
+  const uevents = [];
+
   if (
     !isEqual(
       prevProps.htmlPieceDescriptorsForShownMessages,
@@ -105,12 +109,14 @@ export default function generateInboundEvents(
     )
     || !equalFlagsExcludingRead(prevProps.backgroundData.flags, nextProps.backgroundData.flags)
   ) {
-    return [updateContent(prevProps, nextProps)];
+    uevents.push(updateContent(prevProps, nextProps));
   }
 
-  const uevents = [];
-
   if (prevProps.backgroundData.flags.read !== nextProps.backgroundData.flags.read) {
+    // TODO: Don't consider messages outside the narrow we're viewing.
+    // TODO: Only include messages that we've just marked as read. We're
+    // currently including some read messages only because we've just
+    // learned about them from a fetch.
     const messageIds = Object.keys(nextProps.backgroundData.flags.read)
       .filter(id => !prevProps.backgroundData.flags.read[+id])
       .map(id => +id);

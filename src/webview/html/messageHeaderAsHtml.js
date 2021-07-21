@@ -28,7 +28,7 @@ export default (
   { ownUser, subscriptions }: BackgroundData,
   narrow: Narrow,
   item: Message | Outbox,
-) => {
+): string => {
   type HeaderStyle = 'none' | 'topic+date' | 'full';
   const headerStyle: HeaderStyle = caseNarrow(narrow, {
     stream: () => 'topic+date',
@@ -101,7 +101,7 @@ export default (
     .sort()
     .join(', ')}
 </div>
-    `;
+`;
   }
 
   return '';

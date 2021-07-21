@@ -1,5 +1,6 @@
+import * as logging from '../../utils/logging';
+
 import { KEY_PREFIX, REHYDRATE } from './constants'
-import createAsyncLocalStorage from './defaults/asyncLocalStorage'
 import purgeStoredState from './purgeStoredState'
 import stringify from 'json-stringify-safe'
 
@@ -24,24 +25,12 @@ export default function createPersistor (store, config) {
   }
   const blacklist = config.blacklist || []
   const whitelist = config.whitelist || false
-  const transforms = config.transforms || []
-  const debounce = config.debounce || false
   const keyPrefix = config.keyPrefix !== undefined ? config.keyPrefix : KEY_PREFIX
 
-  // pluggable state shape (e.g. immutablejs)
-  const stateInit = config._stateInit || {}
-  const stateIterator = config._stateIterator || defaultStateIterator
-  const stateGetter = config._stateGetter || defaultStateGetter
-  const stateSetter = config._stateSetter || defaultStateSetter
-
-  // storage with keys -> getAllKeys for localForage support
-  let storage = config.storage || createAsyncLocalStorage('local')
-  if (storage.keys && !storage.getAllKeys) {
-    storage.getAllKeys = storage.keys
-  }
+  const storage = config.storage;
 
   // initialize stateful values
-  let lastState = stateInit
+  let lastState = {}
   let paused = false
   let storesToProcess = []
   let timeIterator = null
@@ -49,11 +38,11 @@ export default function createPersistor (store, config) {
   store.subscribe(() => {
     if (paused) return
 
-    let state = store.getState()
+    const state = store.getState()
 
-    stateIterator(state, (subState, key) => {
+    Object.keys(state).forEach((key) => {
       if (!passWhitelistBlacklist(key)) return
-      if (stateGetter(lastState, key) === stateGetter(state, key)) return
+      if (lastState[key] === state[key]) return
       if (storesToProcess.indexOf(key) !== -1) return
       storesToProcess.push(key)
     })
@@ -69,11 +58,11 @@ export default function createPersistor (store, config) {
           return
         }
 
-        let key = storesToProcess.shift()
-        let storageKey = createStorageKey(key)
-        let endState = transforms.reduce((subState, transformer) => transformer.in(subState, key), stateGetter(store.getState(), key))
-        if (typeof endState !== 'undefined') storage.setItem(storageKey, serializer(endState), warnIfSetError(key))
-      }, debounce)
+        const key = storesToProcess.shift()
+        const storageKey = createStorageKey(key)
+        const endState = store.getState()[key]
+        storage.setItem(storageKey, serializer(endState)).catch(warnIfSetError(key))
+      }, 0)
     }
 
     lastState = state
@@ -88,15 +77,14 @@ export default function createPersistor (store, config) {
   function adhocRehydrate (incoming, options = {}) {
     let state = {}
     if (options.serial) {
-      stateIterator(incoming, (subState, key) => {
+      Object.keys(incoming).forEach((key) => {
+        const subState = incoming[key]
         try {
           let data = deserializer(subState)
-          let value = transforms.reduceRight((interState, transformer) => {
-            return transformer.out(interState, key)
-          }, data)
-          state = stateSetter(state, key, value)
+          let value = data
+          state[key] = value
         } catch (err) {
-          if (process.env.NODE_ENV !== 'production') console.warn(`Error rehydrating data for key "${key}"`, subState, err)
+          logging.warn('Error rehydrating data for a key', { key, err })
         }
       })
     } else state = incoming
@@ -125,7 +113,7 @@ export default function createPersistor (store, config) {
 
 function warnIfSetError (key) {
   return function setError (err) {
-    if (err && process.env.NODE_ENV !== 'production') { console.warn('Error storing data for key:', key, err) }
+    if (err) { logging.warn('Error storing data for key:', key, err) }
   }
 }
 
@@ -150,17 +138,4 @@ function rehydrateAction (data) {
     type: REHYDRATE,
     payload: data
   }
-}
-
-function defaultStateIterator (collection, callback) {
-  return Object.keys(collection).forEach((key) => callback(collection[key], key))
-}
-
-function defaultStateGetter (state, key) {
-  return state[key]
-}
-
-function defaultStateSetter (state, key, value) {
-  state[key] = value
-  return state
 }

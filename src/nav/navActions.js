@@ -5,7 +5,8 @@ import {
   type GenericNavigationAction,
 } from '@react-navigation/native';
 
-import type { Message, Narrow, SharedData, UserId } from '../types';
+import type { Message, Narrow, UserId } from '../types';
+import type { SharedData } from '../sharing/types';
 import type { ApiResponseServerSettings } from '../api/settings/getServerSettings';
 import { getSameRoutesCount } from '../selectors';
 
@@ -28,6 +29,9 @@ export const resetToMainTabs = (): GenericNavigationAction =>
 /** Only call this via `doNarrow`.  See there for details. */
 export const navigateToChat = (narrow: Narrow): GenericNavigationAction =>
   StackActions.push('chat', { narrow, editMessage: null });
+
+export const replaceWithChat = (narrow: Narrow): GenericNavigationAction =>
+  StackActions.replace('chat', { narrow, editMessage: null });
 
 export const navigateToUsersScreen = (): GenericNavigationAction => StackActions.push('users');
 
@@ -62,12 +66,8 @@ export const navigateToGroupDetails = (
   recipients: $ReadOnlyArray<UserId>,
 ): GenericNavigationAction => StackActions.push('group-details', { recipients });
 
-export const navigateToRealmInputScreen = (
-  // The `Object.freeze`` in the `:` case avoids a Flow issue:
-  // https://github.com/facebook/flow/issues/2386#issuecomment-695064325
-  args: {| realm?: URL, initial?: boolean |} = Object.freeze({}),
-): GenericNavigationAction =>
-  StackActions.push('realm-input', { realm: args.realm, initial: args.initial });
+export const navigateToRealmInputScreen = (): GenericNavigationAction =>
+  StackActions.push('realm-input', { initial: undefined });
 
 export const navigateToLightbox = (src: string, message: Message): GenericNavigationAction =>
   StackActions.push('lightbox', { src, message });

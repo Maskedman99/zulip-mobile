@@ -1,13 +1,17 @@
 /* @flow strict-local */
 import { applyMiddleware, compose, createStore } from 'redux';
 import type { Store } from 'redux';
+// $FlowFixMe[untyped-import]
 import thunkMiddleware from 'redux-thunk';
+// $FlowFixMe[untyped-import]
 import { createLogger } from 'redux-logger';
+// $FlowFixMe[untyped-import]
 import createActionBuffer from 'redux-action-buffer';
 import Immutable from 'immutable';
 import { persistStore, autoRehydrate } from '../third/redux-persist';
-import type { Config } from '../third/redux-persist';
+import type { Config, Persistor } from '../third/redux-persist';
 
+import type { ReadWrite } from '../generics';
 import { ZulipVersion } from '../utils/zulipVersion';
 import { stringify, parse } from './replaceRevive';
 import type { Action, GlobalState } from '../types';
@@ -25,8 +29,8 @@ if (process.env.NODE_ENV === 'development') {
   // settings. In the "Console" section, check "Enable custom
   // formatters".
   //
-  // eslint-disable-next-line import/no-extraneous-dependencies, global-require
-  const installDevTools = require('immutable-devtools');
+  // $FlowFixMe[untyped-import]
+  const installDevTools = require('immutable-devtools'); // eslint-disable-line import/no-extraneous-dependencies, global-require
   installDevTools(Immutable);
 }
 
@@ -65,8 +69,8 @@ export const storeKeys: Array<$Keys<GlobalState>> = [
  */
 // prettier-ignore
 export const cacheKeys: Array<$Keys<GlobalState>> = [
-  'flags', 'messages', 'mute', 'narrows', 'pmConversations', 'realm', 'streams',
-  'subscriptions', 'unread', 'userGroups', 'users',
+  'flags', 'messages', 'mute', 'mutedUsers', 'narrows', 'pmConversations',
+  'realm', 'streams', 'subscriptions', 'unread', 'userGroups', 'users',
 ];
 
 /**
@@ -88,7 +92,7 @@ export const cacheKeys: Array<$Keys<GlobalState>> = [
  * that happens.
  */
 function dropCache(state: GlobalState): $Shape<GlobalState> {
-  const result: $Shape<GlobalState> = {};
+  const result: $Shape<ReadWrite<GlobalState>> = {};
   storeKeys.forEach(key => {
     // $FlowFixMe[incompatible-indexer]
     // $FlowFixMe[incompatible-exact]
@@ -157,8 +161,10 @@ const migrations: {| [string]: (GlobalState) => GlobalState |} = {
   // Convert old locale names to new, more-specific locale names.
   '10': state => {
     const newLocaleNames = { zh: 'zh-Hans', id: 'id-ID' };
+    // $FlowIgnore[prop-missing]: `locale` renamed to `language` in 31
     const { locale } = state.settings;
     const newLocale = newLocaleNames[locale] ?? locale;
+    // $FlowIgnore[prop-missing]
     return {
       ...state,
       settings: {
@@ -265,8 +271,10 @@ const migrations: {| [string]: (GlobalState) => GlobalState |} = {
 
   // Rename locale `id-ID` back to `id`.
   '26': state => {
+    // $FlowIgnore[prop-missing]: `locale` renamed to `language` in 31
     const { locale } = state.settings;
     const newLocale = locale === 'id-ID' ? 'id' : locale;
+    // $FlowIgnore[prop-missing]
     return {
       ...state,
       settings: {
@@ -275,6 +283,43 @@ const migrations: {| [string]: (GlobalState) => GlobalState |} = {
       },
     };
   },
+
+  // Remove accounts with "in-progress" login state (empty `.email`),
+  // after #4491
+  '27': state => ({
+    ...state,
+    accounts: state.accounts.filter(a => a.email !== ''),
+  }),
+
+  // Add "open links with in-app browser" setting.
+  '28': state => ({
+    ...state,
+    settings: {
+      ...state.settings,
+      browser: 'default',
+    },
+  }),
+
+  // Make `sender_id` on `Outbox` required.
+  '29': state => ({
+    ...state,
+    outbox: state.outbox.filter(o => o.sender_id !== undefined),
+  }),
+
+  // Add `doNotMarkMessagesAsRead` in `SettingsState`.
+  // (Handled automatically by merging with the new initial state.)
+
+  // Use valid language tag for Portuguese (Portugal)
+  // $FlowIgnore[prop-missing]: `locale` renamed to `language` in 31
+  '30': state => ({
+    ...state,
+    settings: {
+      ...state.settings,
+      locale:
+        // $FlowIgnore[prop-missing]
+        state.settings.locale === 'pt_PT' ? 'pt-PT' : state.settings.locale,
+    },
+  }),
 
   // TIP: When adding a migration, consider just using `dropCache`.
 };
@@ -343,7 +388,7 @@ const store: Store<GlobalState, Action> = createStore(
     // where the live state just gets filled in with the corresponding parts
     // of the just-loaded state from disk.  See upstream docs:
     //   https://github.com/rt2zz/redux-persist/tree/v4.10.2#autorehydrateconfig
-    autoRehydrate(),
+    autoRehydrate({ log: true }),
   ),
 );
 
@@ -372,7 +417,7 @@ const reduxPersistConfig: Config = {
 };
 
 /** Invoke redux-persist.  We do this once at launch. */
-export const restore = (onFinished?: () => void) =>
+export const restore = (onFinished?: () => void): Persistor =>
   persistStore(store, reduxPersistConfig, onFinished);
 
 export default store;

@@ -2,7 +2,9 @@
 
 import React, { useState, useCallback } from 'react';
 import { View, Dimensions, LayoutAnimation } from 'react-native';
+// $FlowFixMe[untyped-import]
 import PhotoView from 'react-native-photo-view';
+// $FlowFixMe[untyped-import]
 import { useActionSheet } from '@expo/react-native-action-sheet';
 
 import * as NavigationService from '../nav/NavigationService';
@@ -42,7 +44,7 @@ type Props = $ReadOnly<{|
   message: Message,
 |}>;
 
-export default function Lightbox(props: Props) {
+export default function Lightbox(props: Props): React$Node {
   const [headerFooterVisible, setHeaderFooterVisible] = useState<boolean>(true);
   const showActionSheetWithOptions: ShowActionSheetWithOptions = useActionSheet()
     .showActionSheetWithOptions;

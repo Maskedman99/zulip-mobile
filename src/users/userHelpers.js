@@ -1,7 +1,16 @@
 /* @flow strict-local */
+// $FlowFixMe[untyped-import]
 import uniqby from 'lodash.uniqby';
 
-import type { UserPresence, User, UserId, UserGroup, PresenceState, UserOrBot } from '../types';
+import type {
+  MutedUsersState,
+  UserPresence,
+  User,
+  UserId,
+  UserGroup,
+  PresenceState,
+  UserOrBot,
+} from '../types';
 import { ensureUnreachable } from '../types';
 import { statusFromPresence } from '../utils/presence';
 import { makeUserId } from '../api/idTypes';
@@ -121,6 +130,7 @@ export const getAutocompleteSuggestion = (
   users: $ReadOnlyArray<AutocompleteOption>,
   filter: string = '',
   ownUserId: UserId,
+  mutedUsers: MutedUsersState,
 ): $ReadOnlyArray<AutocompleteOption> => {
   if (users.length === 0) {
     return users;
@@ -130,7 +140,8 @@ export const getAutocompleteSuggestion = (
   const initials = filterUserByInitials(allAutocompleteOptions, filter, ownUserId);
   const contains = filterUserThatContains(allAutocompleteOptions, filter, ownUserId);
   const matchesEmail = filterUserMatchesEmail(users, filter, ownUserId);
-  return getUniqueUsers([...startWith, ...initials, ...contains, ...matchesEmail]);
+  const candidates = getUniqueUsers([...startWith, ...initials, ...contains, ...matchesEmail]);
+  return candidates.filter(user => !mutedUsers.has(user.user_id));
 };
 
 export const getAutocompleteUserGroupSuggestions = (

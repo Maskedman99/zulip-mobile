@@ -1,36 +1,24 @@
 /* @flow strict-local */
 
-import React, { PureComponent } from 'react';
+import React from 'react';
 
 import type { Node as React$Node } from 'react';
-import type { ThemeName, Dispatch } from '../types';
-import { connect } from '../react-redux';
+import { useSelector } from '../react-redux';
 import { getSettings } from '../directSelectors';
 import { themeData, ThemeContext } from '../styles/theme';
 import { ZulipStatusBar } from '../common';
 
 type Props = $ReadOnly<{|
-  dispatch: Dispatch,
-  theme: ThemeName,
   children: React$Node,
 |}>;
 
-class ThemeProvider extends PureComponent<Props> {
-  static defaultProps = {
-    theme: 'default',
-  };
-
-  render() {
-    const { children, theme } = this.props;
-    return (
-      <ThemeContext.Provider value={themeData[theme]}>
-        <ZulipStatusBar />
-        {children}
-      </ThemeContext.Provider>
-    );
-  }
+export default function ThemeProvider(props: Props): React$Node {
+  const { children } = props;
+  const theme = useSelector(state => getSettings(state).theme);
+  return (
+    <ThemeContext.Provider value={themeData[theme]}>
+      <ZulipStatusBar />
+      {children}
+    </ThemeContext.Provider>
+  );
 }
-
-export default connect(state => ({
-  theme: getSettings(state).theme,
-}))(ThemeProvider);

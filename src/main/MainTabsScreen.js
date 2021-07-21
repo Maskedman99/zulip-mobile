@@ -44,7 +44,7 @@ type Props = $ReadOnly<{|
   route: RouteProp<'main-tabs', void>,
 |}>;
 
-export default function MainTabsScreen(props: Props) {
+export default function MainTabsScreen(props: Props): React$Node {
   const { backgroundColor } = useContext(ThemeContext);
 
   return (
@@ -52,9 +52,15 @@ export default function MainTabsScreen(props: Props) {
       <OfflineNotice />
       <Tab.Navigator
         {...bottomTabNavigatorConfig({
-          showLabel: !!Platform.isPad,
+          // TODO: Find a way to tell if we're on an Android tablet,
+          // and use that -- we don't want to assume Android users
+          // aren't on tablets, but `isPad` is iOS only and `Platform`
+          // doesn't have something else for Android (yet):
+          // https://reactnative.dev/docs/platform#ispad-ios
+          showLabel: Platform.OS === 'ios' && Platform.isPad,
           showIcon: true,
         })}
+        lazy={false}
         backBehavior="none"
       >
         <Tab.Screen

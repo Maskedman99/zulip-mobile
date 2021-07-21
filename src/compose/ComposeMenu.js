@@ -2,9 +2,9 @@
 import React, { PureComponent } from 'react';
 import { Platform, View } from 'react-native';
 import type { DocumentPickerResponse } from 'react-native-document-picker';
+// $FlowFixMe[untyped-import]
 import ImagePicker from 'react-native-image-picker';
 
-import * as NavigationService from '../nav/NavigationService';
 import type { Dispatch, Narrow } from '../types';
 import { connect } from '../react-redux';
 import { showErrorAlert } from '../utils/info';
@@ -12,19 +12,19 @@ import { BRAND_COLOR, createStyleSheet } from '../styles';
 import {
   IconPlusCircle,
   IconLeft,
-  IconPeople,
   IconImage,
   IconCamera,
-  IconFile,
+  IconAttach,
   IconVideo,
 } from '../common/Icons';
 import AnimatedComponent from '../animation/AnimatedComponent';
-import { navigateToCreateGroup, uploadFile } from '../actions';
+import { uploadFile } from '../actions';
 
 type Props = $ReadOnly<{|
   dispatch: Dispatch,
   expanded: boolean,
   destinationNarrow: Narrow,
+  insertAttachment: (DocumentPickerResponse[]) => Promise<void>,
   insertVideoCallLink: (() => void) | null,
   onExpandContract: () => void,
 |}>;
@@ -121,16 +121,16 @@ class ComposeMenu extends PureComponent<Props> {
     ImagePicker.launchCamera(options, this.handleImagePickerResponse);
   };
 
-  handleFilePicker = async () => {
+  handleFilesPicker = async () => {
     // Defer import to here, to avoid an obnoxious import-time warning
     // from this library when in the test environment.
     const DocumentPicker = (await import('react-native-document-picker')).default;
 
     let response = undefined;
     try {
-      response = (await DocumentPicker.pick({
+      response = (await DocumentPicker.pickMultiple({
         type: [DocumentPicker.types.allFiles],
-      }): DocumentPickerResponse);
+      }): DocumentPickerResponse[]);
     } catch (e) {
       if (!DocumentPicker.isCancel(e)) {
         showErrorAlert('Error', e);
@@ -138,7 +138,7 @@ class ComposeMenu extends PureComponent<Props> {
       return;
     }
 
-    this.uploadFile(response.uri, response.name);
+    this.props.insertAttachment(response);
   };
 
   styles = createStyleSheet({
@@ -160,7 +160,7 @@ class ComposeMenu extends PureComponent<Props> {
   render() {
     const { expanded, insertVideoCallLink, onExpandContract } = this.props;
     const numIcons =
-      3 + (Platform.OS === 'android' ? 1 : 0) + (insertVideoCallLink !== null ? 1 : 0);
+      2 + (Platform.OS === 'android' ? 1 : 0) + (insertVideoCallLink !== null ? 1 : 0);
 
     return (
       <View style={this.styles.composeMenu}>
@@ -171,18 +171,11 @@ class ComposeMenu extends PureComponent<Props> {
           visible={expanded}
         >
           <View style={this.styles.composeMenu}>
-            <IconPeople
-              style={this.styles.composeMenuButton}
-              size={24}
-              onPress={() => {
-                NavigationService.dispatch(navigateToCreateGroup());
-              }}
-            />
             {Platform.OS === 'android' && (
-              <IconFile
+              <IconAttach
                 style={this.styles.composeMenuButton}
                 size={24}
-                onPress={this.handleFilePicker}
+                onPress={this.handleFilesPicker}
               />
             )}
             <IconImage

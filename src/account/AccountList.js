@@ -8,11 +8,11 @@ import AccountItem from './AccountItem';
 
 type Props = $ReadOnly<{|
   accounts: $ReadOnlyArray<AccountStatus>,
-  onAccountSelect: number => void,
-  onAccountRemove: number => void,
+  onAccountSelect: number => Promise<void> | void,
+  onAccountRemove: number => Promise<void> | void,
 |}>;
 
-export default function AccountList(props: Props) {
+export default function AccountList(props: Props): React$Node {
   const { accounts, onAccountSelect, onAccountRemove } = props;
 
   return (

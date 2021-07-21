@@ -43,11 +43,11 @@ const styles = createStyleSheet({
 type Props = $ReadOnly<{|
   index: number,
   account: AccountStatus,
-  onSelect: (index: number) => void,
-  onRemove: (index: number) => void,
+  onSelect: (index: number) => Promise<void> | void,
+  onRemove: (index: number) => Promise<void> | void,
 |}>;
 
-export default function AccountItem(props: Props) {
+export default function AccountItem(props: Props): React$Node {
   const { email, realm, isLoggedIn } = props.account;
 
   const showDoneIcon = props.index === 0 && isLoggedIn;

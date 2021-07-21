@@ -36,8 +36,136 @@ It doesn't include
 
 ## Unreleased
 
+### Highlights for users
+
+* (Android) You can now share content from other apps to Zulip. (#117)
+* Fixed a bug where network or server issues could cause an infinite
+  full-screen loading spinner. It now times out after 60 seconds. (#4165)
+* New setting to not mark messages as read when you view them, which is
+  useful for certain workflows. (#4850)
+* Basic support for polls. More to come! (#3205)
+
+
+### Highlights for developers
+
+* All object types are now exact or explicitly inexact. (#3452)
+* We're now using @react-native-community/push-notifications-ios instead of
+  two different libraries. (#4115)
+* `tools/test jest` now picks Android or iOS codepaths at random, rather
+  than always iOS. (#4795)
+* Resolved issues (latest to earliest): #117, #4165, #4858, #4850, #4849,
+  #3205, part of #4309 (PR #4817), #4635, #3244, #3452, parts of #4540 and
+  #2366 (PR #4590), #4657, PR #4797, PR #4815, PR #4820, PR #4821, #4795,
+  #4115
+
+  * Relative to the beta-only release v27.164, also #4818, which was
+    cherry-picked into stable release v27.165.
+
+
+## 27.165 (2021-06-24)
+
+### Highlights for users, vs v27.163 (last prod release)
+
+* Initial support for muted users. (#4655)
+* New color scheme to match the new Zulip logo. (PR #4544)
+* (Android) Fixed a bug where the app sometimes opened to a wrong
+  conversation. (#4758)
+* Fixed a glitch where the add-server screen sometimes flashed by before the
+  auth screen. (#4604)
+* (Android) Now available on the Play Store to devices without cameras.
+  (#4722)
+* Fixed bugs with keypad and letter emoji. (#3517, #3395)
+
+Plus, like every release, many other fixes and improvements for your Zulip
+experience.
+
+
+### Highlights for users, vs v27.164 (last beta)
+
+* Fixed crash on opening a notification. (#4818)
+
+
+### Highlights for developers
+
+* Resolved issue: #4818
+
+
+## 27.164 (2021-06-16)
+
+This was a beta-only release.
+
+
+### Highlights for users
+
+* Initial support for muted users. (#4655)
+* New color scheme to match the new Zulip logo. (PR #4544)
+* (Android) Fixed a bug where the app sometimes opened to a wrong
+  conversation. (#4758)
+* Fixed a glitch where the add-server screen sometimes flashed by before the
+  auth screen. (#4604)
+* (Android) Now available on the Play Store to devices without cameras.
+  (#4722)
+* Fixed bugs with keypad and letter emoji. (#3517, #3395)
+
+Plus, like every release, many other fixes and improvements for your Zulip
+experience.
+
+
+### Highlights for developers
+
+* Extended Jest coverage to include Android-only codepaths. (#4700)
+* Ran `yarn upgrade` to take all semver-compatible upgrades, as of
+  2021-06-07. (It had been almost two years since the last one.) (PR #4789)
+* Fixed new iOS build failures. (PRs #4721, #4634)
+* `restart` events can now cause updates to `zulipVersion` and
+  `zulipFeatureLevel` in `state.accounts[0]`. (PR #4707)
+* Increased test coverage of our storage logic, and continued cleaning up
+  `redux-persist`. (#4709)
+* Fixed a bug where `CaughtUp` state was being wrongly overwritten. (PR
+  #4698)
+* In dev mode only, a user-facing string passed to a `_: GetText` will now
+  be highlighted in the UI if it doesn't have an entry in
+  `messages_en.json`. (#4728)
+* Improved documentation for the release process. (PR #4690)
+* We tried out Dependabot and decided not to use it for now. (#4787)
+
+* Resolved issues (latest to earliest): #4801, #4726, PR #4707, #4715,
+  PR #4777, most of #4655, PR #4750, #4758, PR #4761, PR #4717,
+  PR #4710, PR #4749, #4722, #4604, PR #4728, #3540, #4323, #4734,
+  PR #4721, #4264, PR #4716, PR #4634, PR #4697, PR #4544, PR #4698,
+  PR #4686, PR #4689, #3517, #3395
+
+
+## 27.163 (2021-06-04)
+
+### Highlights for users, vs v27.161 (last prod release)
+
+* A message is now marked as read when you scroll to the bottom of it,
+  not just the top. (#4561)
+* Fixed bug with entering the emoji :smile: and :zero:, :one:, …,
+  :ten:. (#4638)
+* (Android) Fixed bug in sharing an image from the lightbox. (#4539)
+* More parts of the app now offer a menu when you make a long press,
+  with options like muting or unmuting a topic. (#3473, #4532)
+
+Plus, like every release, numerous other fixes and improvements for
+your Zulip experience.
+
+
+### Highlights for users, vs v27.162 (last beta)
+
+* Fixed endless loading screen after logging out. (#4723)
+
+
+### Highlights for developers, vs v27.162
+
+* Resolved issues (latest to earliest): #4723
+
 
 ## 27.162 (2021-04-20)
+
+(This was a beta-only release.)
+
 
 ### Highlights for users
 

@@ -1,5 +1,6 @@
 /* @flow strict-local */
 import invariant from 'invariant';
+// $FlowFixMe[untyped-import]
 import isEqual from 'lodash.isequal';
 
 import { mapOrNull } from '../collections';
@@ -111,7 +112,7 @@ const filterRecipientsAsUserIds = (
     ? [...recipients]
     : recipients.filter(r => r !== ownUserId).sort((a, b) => a - b);
 
-export const normalizeRecipientsAsUserIds = (recipients: UserId[]) =>
+export const normalizeRecipientsAsUserIds = (recipients: UserId[]): string =>
   recipients.sort((a, b) => a - b).join(',');
 
 /**
@@ -124,7 +125,7 @@ export const normalizeRecipientsAsUserIds = (recipients: UserId[]) =>
 export const normalizeRecipientsAsUserIdsSansMe = (
   recipients: $ReadOnlyArray<UserId>,
   ownUserId: UserId,
-) => normalizeRecipientsAsUserIds(filterRecipientsAsUserIds(recipients, ownUserId));
+): string => normalizeRecipientsAsUserIds(filterRecipientsAsUserIds(recipients, ownUserId));
 
 /**
  * The set of users to show in the UI to identify a PM conversation.
@@ -196,7 +197,10 @@ export const pmKeyRecipientsFromMessage = (
   if (message.type !== 'private') {
     throw new Error('pmKeyRecipientsFromMessage: expected PM, got stream message');
   }
-  return pmKeyRecipientsFromIds(recipientsOfPrivateMessage(message).map(r => r.id), ownUserId);
+  return pmKeyRecipientsFromIds(
+    recipientsOfPrivateMessage(message).map(r => r.id),
+    ownUserId,
+  );
 };
 
 /**

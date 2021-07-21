@@ -2,6 +2,31 @@
 
 /** Maps certain emoji to substitutes, for us to show instead. */
 export const override: {| [code: string]: string |} = {
+  // Fix the "keypad" emoji, which are broken in Zulip's emoji database;
+  // use the codepoint sequences for them that appear in the Unicode spec.
+  // https://chat.zulip.org/#narrow/stream/3-backend/topic/unicode.20emojis/near/759357
+  '0023-20e3': '0023-fe0f-20e3', // # (:hash:)
+  '002a-20e3': '002a-fe0f-20e3', // * (:asterisk:)
+  '0030-20e3': '0030-fe0f-20e3', // 0
+  '0031-20e3': '0031-fe0f-20e3', // 1
+  '0032-20e3': '0032-fe0f-20e3', // 2
+  '0033-20e3': '0033-fe0f-20e3', // 3
+  '0034-20e3': '0034-fe0f-20e3', // 4
+  '0035-20e3': '0035-fe0f-20e3', // 5
+  '0036-20e3': '0036-fe0f-20e3', // 6
+  '0037-20e3': '0037-fe0f-20e3', // 7
+  '0038-20e3': '0038-fe0f-20e3', // 8
+  '0039-20e3': '0039-fe0f-20e3', // 9
+
+  // Fix the "letter" emoji.  The codes in Zulip's emoji database would give
+  // these a text-style rather than emoji-style presentation; that's subtler
+  // than we want, plus when not in night mode it's actually invisible.
+  '1f170': '1f170-fe0f', // :a:
+  '1f171': '1f171-fe0f', // :b:
+  '1f17e': '1f17e-fe0f', // :o:
+  '1f17f': '1f17f-fe0f', // :p:
+  // (Zulip only actually offers a handful of these letter emoji.)
+
   // :check_mark: -> :check: because the former is invisible on a light
   // background, i.e. when not in night mode.
   '2714': '2705',

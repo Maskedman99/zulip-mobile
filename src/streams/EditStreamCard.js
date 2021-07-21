@@ -2,12 +2,12 @@
 import React, { PureComponent } from 'react';
 import { View } from 'react-native';
 
-import { Input, Label, OptionRow, ZulipButton } from '../common';
+import { Input, Label, SwitchRow, ZulipButton } from '../common';
 import styles, { createStyleSheet } from '../styles';
 import { IconPrivate } from '../common/Icons';
 
 const componentStyles = createStyleSheet({
-  optionRow: {
+  switchRow: {
     paddingLeft: 8,
     paddingRight: 8,
   },
@@ -75,8 +75,8 @@ export default class EditStreamCard extends PureComponent<Props, State> {
           defaultValue={initialValues.description}
           onChangeText={this.handleDescriptionChange}
         />
-        <OptionRow
-          style={componentStyles.optionRow}
+        <SwitchRow
+          style={componentStyles.switchRow}
           Icon={IconPrivate}
           label="Private"
           value={this.state.isPrivate}

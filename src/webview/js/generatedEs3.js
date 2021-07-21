@@ -14,6 +14,44 @@ export default `
 var compiledWebviewJs = (function (exports) {
   'use strict';
 
+  function ownKeys(object, enumerableOnly) {
+    var keys = Object.keys(object);
+
+    if (Object.getOwnPropertySymbols) {
+      var symbols = Object.getOwnPropertySymbols(object);
+
+      if (enumerableOnly) {
+        symbols = symbols.filter(function (sym) {
+          return Object.getOwnPropertyDescriptor(object, sym).enumerable;
+        });
+      }
+
+      keys.push.apply(keys, symbols);
+    }
+
+    return keys;
+  }
+
+  function _objectSpread2(target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i] != null ? arguments[i] : {};
+
+      if (i % 2) {
+        ownKeys(Object(source), true).forEach(function (key) {
+          _defineProperty(target, key, source[key]);
+        });
+      } else if (Object.getOwnPropertyDescriptors) {
+        Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
+      } else {
+        ownKeys(Object(source)).forEach(function (key) {
+          Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));
+        });
+      }
+    }
+
+    return target;
+  }
+
   function _classCallCheck(instance, Constructor) {
     if (!(instance instanceof Constructor)) {
       throw new TypeError("Cannot call a class as a function");
@@ -51,40 +89,6 @@ var compiledWebviewJs = (function (exports) {
     return obj;
   }
 
-  function ownKeys(object, enumerableOnly) {
-    var keys = Object.keys(object);
-
-    if (Object.getOwnPropertySymbols) {
-      var symbols = Object.getOwnPropertySymbols(object);
-      if (enumerableOnly) symbols = symbols.filter(function (sym) {
-        return Object.getOwnPropertyDescriptor(object, sym).enumerable;
-      });
-      keys.push.apply(keys, symbols);
-    }
-
-    return keys;
-  }
-
-  function _objectSpread2(target) {
-    for (var i = 1; i < arguments.length; i++) {
-      var source = arguments[i] != null ? arguments[i] : {};
-
-      if (i % 2) {
-        ownKeys(Object(source), true).forEach(function (key) {
-          _defineProperty(target, key, source[key]);
-        });
-      } else if (Object.getOwnPropertyDescriptors) {
-        Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
-      } else {
-        ownKeys(Object(source)).forEach(function (key) {
-          Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));
-        });
-      }
-    }
-
-    return target;
-  }
-
   var makeUserId = function makeUserId(id) {
     return id;
   };
@@ -99,7 +103,75 @@ var compiledWebviewJs = (function (exports) {
   };
 
   var InboundEventLogger = function () {
-    _createClass(InboundEventLogger, null, [{
+    function InboundEventLogger() {
+      _classCallCheck(this, InboundEventLogger);
+
+      this._isCapturing = false;
+      this._capturedInboundEventItems = [];
+    }
+
+    _createClass(InboundEventLogger, [{
+      key: "startCapturing",
+      value: function startCapturing() {
+        if (this._isCapturing) {
+          throw new Error('InboundEventLogger: Tried to call startCapturing while already capturing.');
+        } else if (this._capturedInboundEventItems.length > 0 || this._captureEndTime !== undefined) {
+          throw new Error('InboundEventLogger: Tried to call startCapturing before resetting.');
+        }
+
+        this._isCapturing = true;
+        this._captureStartTime = Date.now();
+      }
+    }, {
+      key: "stopCapturing",
+      value: function stopCapturing() {
+        if (!this._isCapturing) {
+          throw new Error('InboundEventLogger: Tried to call stopCapturing while not capturing.');
+        }
+
+        this._isCapturing = false;
+        this._captureEndTime = Date.now();
+      }
+    }, {
+      key: "send",
+      value: function send() {
+        var _this$_captureStartTi, _this$_captureEndTime;
+
+        if (this._isCapturing) {
+          throw new Error('InboundEventLogger: Tried to send captured events while still capturing.');
+        }
+
+        sendMessage({
+          type: 'warn',
+          details: {
+            startTime: (_this$_captureStartTi = this._captureStartTime) !== null && _this$_captureStartTi !== void 0 ? _this$_captureStartTi : null,
+            endTime: (_this$_captureEndTime = this._captureEndTime) !== null && _this$_captureEndTime !== void 0 ? _this$_captureEndTime : null,
+            inboundEventItems: JSON.stringify(this._capturedInboundEventItems)
+          }
+        });
+      }
+    }, {
+      key: "reset",
+      value: function reset() {
+        this._captureStartTime = undefined;
+        this._captureEndTime = undefined;
+        this._capturedInboundEventItems = [];
+        this._isCapturing = false;
+      }
+    }, {
+      key: "maybeCaptureInboundEvent",
+      value: function maybeCaptureInboundEvent(event) {
+        if (this._isCapturing) {
+          var item = {
+            type: 'inbound',
+            timestamp: Date.now(),
+            scrubbedEvent: InboundEventLogger.scrubInboundEvent(event)
+          };
+
+          this._capturedInboundEventItems.push(item);
+        }
+      }
+    }], [{
       key: "scrubInboundEvent",
       value: function scrubInboundEvent(event) {
         switch (event.type) {
@@ -153,76 +225,6 @@ var compiledWebviewJs = (function (exports) {
                 type: event.type
               };
             }
-        }
-      }
-    }]);
-
-    function InboundEventLogger() {
-      _classCallCheck(this, InboundEventLogger);
-
-      this._isCapturing = false;
-      this._capturedInboundEventItems = [];
-    }
-
-    _createClass(InboundEventLogger, [{
-      key: "startCapturing",
-      value: function startCapturing() {
-        if (this._isCapturing) {
-          throw new Error('InboundEventLogger: Tried to call startCapturing while already capturing.');
-        } else if (this._capturedInboundEventItems.length > 0 || this._captureEndTime !== undefined) {
-          throw new Error('InboundEventLogger: Tried to call startCapturing before resetting.');
-        }
-
-        this._isCapturing = true;
-        this._captureStartTime = Date.now();
-      }
-    }, {
-      key: "stopCapturing",
-      value: function stopCapturing() {
-        if (!this._isCapturing) {
-          throw new Error('InboundEventLogger: Tried to call stopCapturing while not capturing.');
-        }
-
-        this._isCapturing = false;
-        this._captureEndTime = Date.now();
-      }
-    }, {
-      key: "send",
-      value: function send() {
-        var _this$_captureStartTi, _this$_captureEndTime;
-
-        if (this._isCapturing) {
-          throw new Error('InboundEventLogger: Tried to send captured events while still capturing.');
-        }
-
-        sendMessage({
-          type: 'warn',
-          details: {
-            startTime: (_this$_captureStartTi = this._captureStartTime) !== null && _this$_captureStartTi !== void 0 ? _this$_captureStartTi : null,
-            endTime: (_this$_captureEndTime = this._captureEndTime) !== null && _this$_captureEndTime !== void 0 ? _this$_captureEndTime : null,
-            inboundEventItems: this._capturedInboundEventItems
-          }
-        });
-      }
-    }, {
-      key: "reset",
-      value: function reset() {
-        this._captureStartTime = undefined;
-        this._captureEndTime = undefined;
-        this._capturedInboundEventItems = [];
-        this._isCapturing = false;
-      }
-    }, {
-      key: "maybeCaptureInboundEvent",
-      value: function maybeCaptureInboundEvent(event) {
-        if (this._isCapturing) {
-          var item = {
-            type: 'inbound',
-            timestamp: Date.now(),
-            scrubbedEvent: InboundEventLogger.scrubInboundEvent(event)
-          };
-
-          this._capturedInboundEventItems.push(item);
         }
       }
     }]);
@@ -519,6 +521,10 @@ var compiledWebviewJs = (function (exports) {
     return walkToMessage(start.previousElementSibling, 'previousElementSibling');
   }
 
+  function nextMessage(start) {
+    return walkToMessage(start.nextElementSibling, 'nextElementSibling');
+  }
+
   function isVisible(element, top, bottom) {
     var rect = element.getBoundingClientRect();
     return top < rect.bottom && rect.top < bottom;
@@ -640,7 +646,10 @@ var compiledWebviewJs = (function (exports) {
       startMessageId: rangeHull.first,
       endMessageId: rangeHull.last
     });
-    setMessagesReadAttributes(rangeHull);
+
+    if (!doNotMarkMessagesAsRead) {
+      setMessagesReadAttributes(rangeHull);
+    }
 
     if (messageRange.first < messageRange.last) {
       prevMessageRange = messageRange;
@@ -815,10 +824,21 @@ var compiledWebviewJs = (function (exports) {
     }
   };
 
-  var handleInboundEventReady = function handleInboundEventReady(uevent) {
+  var readyRetryInterval = undefined;
+
+  var signalReadyForEvents = function signalReadyForEvents() {
     sendMessage({
       type: 'ready'
     });
+    readyRetryInterval = setInterval(function () {
+      sendMessage({
+        type: 'ready'
+      });
+    }, 100);
+  };
+
+  var handleInboundEventReady = function handleInboundEventReady(uevent) {
+    clearInterval(readyRetryInterval);
   };
 
   var handleInboundEventMessagesRead = function handleInboundEventMessagesRead(uevent) {
@@ -859,6 +879,15 @@ var compiledWebviewJs = (function (exports) {
       inboundEventHandlers[uevent.type](uevent);
     });
     scrollEventsDisabled = false;
+  };
+
+  var revealMutedMessages = function revealMutedMessages(message) {
+    var messageNode = message;
+
+    do {
+      messageNode.setAttribute('data-mute-state', 'shown');
+      messageNode = nextMessage(messageNode);
+    } while (messageNode && messageNode.classList.contains('message-brief'));
   };
 
   var requireAttribute = function requireAttribute(e, name) {
@@ -967,6 +996,26 @@ var compiledWebviewJs = (function (exports) {
       return;
     }
 
+    if (target.matches('.poll-vote')) {
+      var _messageElement = target.closest('.message');
+
+      if (!_messageElement) {
+        throw new Error('Message element not found');
+      }
+
+      var current_vote = requireAttribute(target, 'data-voted') === 'true';
+      var vote = current_vote ? -1 : 1;
+      sendMessage({
+        type: 'vote',
+        messageId: requireNumericAttribute(_messageElement, 'data-msg-id'),
+        key: requireAttribute(target, 'data-key'),
+        vote: vote
+      });
+      target.setAttribute('data-voted', (!current_vote).toString());
+      target.innerText = (parseInt(target.innerText, 10) + vote).toString();
+      return;
+    }
+
     if (target.matches('time')) {
       var originalText = requireAttribute(target, 'original-text');
       sendMessage({
@@ -1003,9 +1052,17 @@ var compiledWebviewJs = (function (exports) {
       return;
     }
 
+    var targetType = target.matches('.header') ? 'header' : target.matches('a') ? 'link' : 'message';
+    var messageNode = target.closest('.message');
+
+    if (targetType === 'message' && messageNode && messageNode.getAttribute('data-mute-state') === 'hidden') {
+      revealMutedMessages(messageNode);
+      return;
+    }
+
     sendMessage({
       type: 'longPress',
-      target: target.matches('.header') ? 'header' : target.matches('a') ? 'link' : 'message',
+      target: targetType,
       messageId: getMessageIdFromNode(target),
       href: target.matches('a') ? requireAttribute(target, 'href') : null
     });
@@ -1049,8 +1106,11 @@ var compiledWebviewJs = (function (exports) {
   documentBody.addEventListener('drag', function (e) {
     clearTimeout(longPressTimeout);
   });
+  signalReadyForEvents();
 
   exports.handleInitialLoad = handleInitialLoad;
+
+  Object.defineProperty(exports, '__esModule', { value: true });
 
   return exports;
 

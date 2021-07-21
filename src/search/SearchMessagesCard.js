@@ -8,8 +8,6 @@ import { createStyleSheet } from '../styles';
 import { LoadingIndicator, SearchEmptyState } from '../common';
 import { HOME_NARROW } from '../utils/narrow';
 import MessageList from '../webview/MessageList';
-import getHtmlPieceDescriptors from '../message/getHtmlPieceDescriptors';
-import { NULL_ARRAY } from '../nullObjects';
 
 const styles = createStyleSheet({
   results: {
@@ -23,9 +21,7 @@ type Props = $ReadOnly<{|
 |}>;
 
 export default class SearchMessagesCard extends PureComponent<Props> {
-  static NOT_FETCHING = { older: false, newer: false };
-
-  render() {
+  render(): React$Node {
     const { isFetching, messages } = this.props;
 
     if (isFetching) {
@@ -44,18 +40,23 @@ export default class SearchMessagesCard extends PureComponent<Props> {
       return <SearchEmptyState text="No results" />;
     }
 
-    const htmlPieceDescriptors = getHtmlPieceDescriptors(messages, HOME_NARROW);
+    // TODO: This is kind of a hack.
+    const narrow = HOME_NARROW;
 
     return (
       <View style={styles.results}>
         <MessageList
-          initialScrollMessageId={messages[0].id}
+          initialScrollMessageId={
+            // This access is OK only because of the `.length === 0` check
+            // above.
+            messages[messages.length - 1].id
+          }
           messages={messages}
-          narrow={HOME_NARROW}
-          htmlPieceDescriptorsForShownMessages={htmlPieceDescriptors}
-          fetching={SearchMessagesCard.NOT_FETCHING}
+          narrow={narrow}
           showMessagePlaceholders={false}
-          typingUsers={NULL_ARRAY}
+          // TODO: handle editing a message from the search results,
+          // or make this prop optional
+          startEditMessage={() => undefined}
         />
       </View>
     );

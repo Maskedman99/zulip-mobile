@@ -6,7 +6,13 @@ import { getAuthHeaders } from './transport';
 import { encodeParamsForUrl } from '../utils/url';
 import userAgent from '../utils/userAgent';
 import { networkActivityStart, networkActivityStop } from '../utils/networkActivity';
-import { makeErrorFromApi } from './apiErrors';
+import {
+  interpretApiResponse,
+  MalformedResponseError,
+  NetworkError,
+  RequestError,
+} from './apiErrors';
+import * as logging from '../utils/logging';
 
 const apiVersion = 'api/v1';
 
@@ -36,27 +42,51 @@ export const apiFetch = async (
   params: $Diff<$Exact<RequestOptions>, {| headers: mixed |}>,
 ) => fetch(new URL(`/${apiVersion}/${route}`, auth.realm).toString(), getFetchParams(auth, params));
 
+/** (Caller beware! Return type is the magic `empty`.) */
 export const apiCall = async (
   auth: Auth,
   route: string,
   params: $Diff<$Exact<RequestOptions>, {| headers: mixed |}>,
   isSilent: boolean = false,
-) => {
+): Promise<empty> => {
   try {
     networkActivityStart(isSilent);
-    const response = await apiFetch(auth, route, params);
-    const json = await response.json().catch(() => undefined);
-    if (response.ok && json !== undefined) {
-      return json;
+
+    let response = undefined;
+    let json = undefined;
+    try {
+      response = await apiFetch(auth, route, params);
+      json = await response.json().catch(() => undefined);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        // This really is how `fetch` is supposed to signal a network error:
+        //   https://fetch.spec.whatwg.org/#ref-for-concept-network-error⑥⓪
+        throw new NetworkError(error.message);
+      }
+      throw error;
     }
-    // eslint-disable-next-line no-console
-    console.log({ route, params, httpStatus: response.status, json });
+
+    const result = interpretApiResponse(response.status, json);
+    /* $FlowFixMe[incompatible-type] We let the caller pretend this data
+         is whatever it wants it to be. */
+    return result;
+  } catch (errorIllTyped) {
+    const error: mixed = errorIllTyped; // https://github.com/facebook/flow/issues/2470
+
+    const { httpStatus, data } = error instanceof RequestError ? error : {};
+
+    logging.info({ route, params, httpStatus, response: data });
     Sentry.addBreadcrumb({
       category: 'api',
       level: 'info',
-      data: { route, params, httpStatus: response.status, json },
+      data: { route, params, httpStatus, response: data },
     });
-    throw makeErrorFromApi(response.status, json);
+
+    if (error instanceof MalformedResponseError) {
+      logging.warn(`Bad response from server: ${JSON.stringify(data) ?? 'undefined'}`);
+    }
+
+    throw error;
   } finally {
     networkActivityStop(isSilent);
   }

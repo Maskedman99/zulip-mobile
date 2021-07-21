@@ -10,7 +10,7 @@
  * @flow strict-local
  */
 
-import type { Message, Stream, UserId, UserPresence } from './modelTypes';
+import type { Message, MutedUser, Stream, UserId, UserPresence } from './modelTypes';
 
 export class EventTypes {
   static alert_words: 'alert_words' = 'alert_words';
@@ -18,12 +18,14 @@ export class EventTypes {
   static heartbeat: 'heartbeat' = 'heartbeat';
   static message: 'message' = 'message';
   static muted_topics: 'muted_topics' = 'muted_topics';
+  static muted_users: 'muted_users' = 'muted_users';
   static presence: 'presence' = 'presence';
   static reaction: 'reaction' = 'reaction';
   static realm_bot: 'realm_bot' = 'realm_bot';
   static realm_emoji: 'realm_emoji' = 'realm_emoji';
   static realm_filters: 'realm_filters' = 'realm_filters';
   static realm_user: 'realm_user' = 'realm_user';
+  static restart: 'restart' = 'restart';
   static stream: 'stream' = 'stream';
   static submessage: 'submessage' = 'submessage';
   static subscription: 'subscription' = 'subscription';
@@ -68,6 +70,12 @@ export type MessageEvent = {|
    * Otherwise absent.
    */
   local_message_id?: number,
+|};
+
+export type MutedUsersEvent = {|
+  ...EventCommon,
+  type: typeof EventTypes.muted_users,
+  muted_users: MutedUser[],
 |};
 
 /** A new submessage.  See the `Submessage` type for details. */
@@ -143,4 +151,23 @@ export type UpdateMessageFlagsEvent = {|
   flag: empty, // TODO fill in
   all: boolean,
   messages: number[],
+|};
+
+// https://zulip.com/api/get-events#restart
+export type RestartEvent = {|
+  ...EventCommon,
+  type: typeof EventTypes.restart,
+
+  server_generation: number,
+  immediate: boolean,
+
+  // Servers at feature level 59 or above send these
+  // (zulip/zulip@65c400e06). The fields describe the server after the
+  // ugprade; handling an event that includes them is the fastest way
+  // to learn about a server upgrade.
+  //
+  // They have the same shape and meaning as the same-named fields in
+  // the /server_settings and /register responses.
+  zulip_version?: string,
+  zulip_feature_level?: number,
 |};

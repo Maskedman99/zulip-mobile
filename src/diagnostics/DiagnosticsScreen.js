@@ -7,7 +7,7 @@ import type { RouteProp } from '../react-navigation';
 import type { AppNavigationProp } from '../nav/AppNavigator';
 import * as NavigationService from '../nav/NavigationService';
 import { createStyleSheet } from '../styles';
-import { OptionButton, OptionDivider, Screen, RawLabel } from '../common';
+import { NestedNavRow, OptionDivider, Screen, RawLabel } from '../common';
 import {
   navigateToDebug,
   navigateToStorage,
@@ -28,30 +28,30 @@ type Props = $ReadOnly<{|
 |}>;
 
 export default class DiagnosticsScreen extends PureComponent<Props> {
-  render() {
+  render(): React$Node {
     return (
       <Screen title="Diagnostics">
         <RawLabel style={styles.versionLabel} text={`v${nativeApplicationVersion ?? '?.?.?'}`} />
         <OptionDivider />
-        <OptionButton
+        <NestedNavRow
           label="Variables"
           onPress={() => {
             NavigationService.dispatch(navigateToVariables());
           }}
         />
-        <OptionButton
+        <NestedNavRow
           label="Timing"
           onPress={() => {
             NavigationService.dispatch(navigateToTiming());
           }}
         />
-        <OptionButton
+        <NestedNavRow
           label="Storage"
           onPress={() => {
             NavigationService.dispatch(navigateToStorage());
           }}
         />
-        <OptionButton
+        <NestedNavRow
           label="Debug"
           onPress={() => {
             NavigationService.dispatch(navigateToDebug());

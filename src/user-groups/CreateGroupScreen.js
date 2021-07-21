@@ -1,11 +1,11 @@
 /* @flow strict-local */
-import React, { PureComponent } from 'react';
+import React, { useState, useCallback } from 'react';
 
 import type { RouteProp } from '../react-navigation';
 import type { AppNavigationProp } from '../nav/AppNavigator';
 import * as NavigationService from '../nav/NavigationService';
-import type { Dispatch, UserId, UserOrBot } from '../types';
-import { connect } from '../react-redux';
+import type { UserOrBot } from '../types';
+import { useSelector, useDispatch } from '../react-redux';
 import { Screen } from '../common';
 import { doNarrow, navigateBack } from '../actions';
 import { pmNarrowFromUsers } from '../utils/narrow';
@@ -13,45 +13,30 @@ import { pmKeyRecipientsFromUsers } from '../utils/recipient';
 import UserPickerCard from '../user-picker/UserPickerCard';
 import { getOwnUserId } from '../users/userSelectors';
 
-type SelectorProps = {|
-  +ownUserId: UserId,
-|};
-
 type Props = $ReadOnly<{|
   navigation: AppNavigationProp<'create-group'>,
   route: RouteProp<'create-group', void>,
-
-  dispatch: Dispatch,
-  ...SelectorProps,
 |}>;
 
-type State = {|
-  filter: string,
-|};
+export default function CreateGroupScreen(props: Props) {
+  const dispatch = useDispatch();
+  const ownUserId = useSelector(getOwnUserId);
 
-class CreateGroupScreen extends PureComponent<Props, State> {
-  state = {
-    filter: '',
-  };
+  const [filter, setFilter] = useState<string>('');
 
-  handleFilterChange = (filter: string) => this.setState({ filter });
+  const handleFilterChange = useCallback((_filter: string) => setFilter(_filter), []);
 
-  handleCreateGroup = (selected: UserOrBot[]) => {
-    const { dispatch, ownUserId } = this.props;
-    NavigationService.dispatch(navigateBack());
-    dispatch(doNarrow(pmNarrowFromUsers(pmKeyRecipientsFromUsers(selected, ownUserId))));
-  };
+  const handleCreateGroup = useCallback(
+    (selected: UserOrBot[]) => {
+      NavigationService.dispatch(navigateBack());
+      dispatch(doNarrow(pmNarrowFromUsers(pmKeyRecipientsFromUsers(selected, ownUserId))));
+    },
+    [dispatch, ownUserId],
+  );
 
-  render() {
-    const { filter } = this.state;
-    return (
-      <Screen search scrollEnabled={false} searchBarOnChange={this.handleFilterChange}>
-        <UserPickerCard filter={filter} onComplete={this.handleCreateGroup} />
-      </Screen>
-    );
-  }
+  return (
+    <Screen search scrollEnabled={false} searchBarOnChange={handleFilterChange}>
+      <UserPickerCard filter={filter} onComplete={handleCreateGroup} />
+    </Screen>
+  );
 }
-
-export default connect<SelectorProps, _, _>(state => ({
-  ownUserId: getOwnUserId(state),
-}))(CreateGroupScreen);
